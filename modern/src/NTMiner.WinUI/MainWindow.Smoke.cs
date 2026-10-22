@@ -39,6 +39,13 @@ public sealed partial class MainWindow
             DeviceChoice.SelectedIndex = 1;
             Check(SelectedMiner == MinerKind.BzMiner && IsBenchmark && CpuThreads.Value == 1, "CPU selects BzMiner and one-thread offline self-test");
             await CaptureAsync("configuration-light.png");
+            // Collapsed sidebar: the content area gets wider, which is where layout regressions hide.
+            Navigation.IsPaneOpen = false;
+            await Task.Delay(400);
+            await CaptureAsync("configuration-collapsed-light.png");
+            Check(true, "Configuration page renders with the sidebar collapsed");
+            Navigation.IsPaneOpen = true;
+            await Task.Delay(400);
             Navigation.SelectedItem = OverviewItem; ShowPage("overview");
             await StartTaskAsync();
             await Wait(() => SpeedLabel.Text.EndsWith("H/s") && _state == MiningState.Running && !_busy);

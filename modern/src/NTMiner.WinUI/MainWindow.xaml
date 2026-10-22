@@ -23,7 +23,8 @@
     <NavigationViewItem x:Name="LogsItem" Content="运行日志" Tag="logs"><NavigationViewItem.Icon><SymbolIcon Symbol="Document" /></NavigationViewItem.Icon></NavigationViewItem>
    </NavigationView.MenuItems>
    <NavigationView.PaneFooter>
-    <StackPanel Margin="16,16,12,20" Spacing="5"><TextBlock Text="仅本机控制" FontSize="12" /><TextBlock Text="关闭窗口将停止任务" FontSize="11" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+    <!-- 收起态侧边栏只有约 48px，这段说明文字没有空间，直接隐藏而不是被挤成竖排单字。 -->
+    <StackPanel x:Name="PaneFooterText" Margin="16,16,12,20" Spacing="5"><TextBlock Text="仅本机控制" FontSize="12" /><TextBlock Text="关闭窗口将停止任务" FontSize="11" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
    </NavigationView.PaneFooter>
    <Grid Padding="26,12,26,22" RowSpacing="16">
     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
@@ -103,8 +104,8 @@
        </ItemsControl>
       </StackPanel>
      </ScrollViewer>
-     <ScrollViewer x:Name="ConfigurationPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="16" MaxWidth="860" HorizontalAlignment="Stretch">
+     <ScrollViewer x:Name="ConfigurationPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16" MaxWidth="860" HorizontalAlignment="Center" VerticalAlignment="Top">
        <Border Style="{StaticResource Card}">
         <StackPanel Spacing="14">
          <TextBlock Text="运行方式" FontSize="18" FontWeight="SemiBold" />

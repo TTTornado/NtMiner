@@ -34,6 +34,13 @@ public sealed partial class MainWindow : Window
         if (Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported()) SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new SizeInt32(1280, 920));
         AppWindow.Closing += WindowClosing;
+        // The pane footer is plain text: hide it when the pane collapses to icons only,
+        // otherwise it is squeezed into a single-character column.
+        Navigation.PaneOpening += (_, _) => UpdatePaneFooter();
+        Navigation.PaneOpened += (_, _) => UpdatePaneFooter();
+        Navigation.PaneClosing += (_, _) => UpdatePaneFooter();
+        Navigation.PaneClosed += (_, _) => UpdatePaneFooter();
+        UpdatePaneFooter();
         CpuThreads.Maximum = Environment.ProcessorCount;
         CpuHint.Text = $"本机 {Environment.ProcessorCount} 个逻辑线程；建议先用 1 个线程验证。";
         _ready = true;
@@ -260,6 +267,14 @@ public sealed partial class MainWindow : Window
         if (!_ready || args.SelectedItemContainer?.Tag is not string tag) return;
         ShowPage(tag);
     }
+    private void UpdatePaneFooter()
+    {
+        if (PaneFooterText is null) return;
+        // 收起后侧边栏只剩图标，说明文字没有空间，直接隐藏。
+        var wide = Navigation.IsPaneOpen && Navigation.DisplayMode != NavigationViewDisplayMode.Minimal;
+        PaneFooterText.Visibility = wide ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void ShowPage(string tag)
     {
         OverviewPanel.Visibility = tag == "overview" ? Visibility.Visible : Visibility.Collapsed;

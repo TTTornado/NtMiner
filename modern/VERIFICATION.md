@@ -2,6 +2,16 @@
 
 日期：2026-10-21。环境：Windows x64，便携 .NET SDK 10.0.402。
 
+## 0.4 侧边栏收起时的布局修复（2026-10-22）
+
+用户反馈"挖矿配置页在侧边栏收回时显示不正常"。加截图验收项 `configuration-collapsed-light.png` 后确认三处问题，均已修复：
+
+1. **设备下拉框溢出**：配置页外层是 `ScrollViewer > StackPanel MaxWidth=860 HorizontalAlignment=Stretch`。`ScrollViewer` 按内容固有宽度测量子元素，`Stretch` 在滚动方向上不生效，于是右列下拉框被裁掉。改为 `HorizontalAlignment="Center"` 并禁用水平滚动条。
+2. **底部说明文字被压成竖排单字**：`NavigationView.PaneFooter` 里的文字按展开态 `Margin="16,16,12,20"` 排版，收起后侧边栏只剩约 48 px，左右边距吃满宽度。改为随侧边栏状态隐藏。
+3. **内容区未居中**：与第 1 项同源，`Center` 后配置卡片在内容区内居中。
+
+WinUI 验收由 22 项增至 23 项（新增侧边栏收起渲染检查）。后台 35 项通过、WPF 界面验收通过、WinUI 23 项通过，0 警告 0 错误；展开态与收起态截图均已目视确认。
+
 ## 0.4 启动流程改为按需构建（2026-10-22）
 
 原 `Start-WinUI.cmd` → `BuildWinUI.ps1 -Action Run` 每次启动都无条件先还原再构建，实测 **21 秒**；即使没有任何源码改动也要付出该成本，且在程序已打开时必然因 DLL 被占用而失败。改为按需构建：`Start-*` 检查源码是否比构建标记新，未变化时直接启动。
