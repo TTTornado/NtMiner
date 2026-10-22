@@ -72,6 +72,7 @@ public sealed partial class MainWindow : Window
                 DeviceChoice.SelectedIndex = (int)options.Device;
                 CpuThreads.Value = options.CpuThreads; BenchmarkMode.IsChecked = options.BenchmarkMode;
                 ThemeChoice.SelectedIndex = (int)options.Theme;
+                ApplyTheme();   // 索引为 0（跟随系统）时 SelectionChanged 不触发，必须主动应用
                 // 加载阶段不能触发自动保存，否则会把“刚读到的默认值”立刻写回文件。
                 _suppressAutoSave = true;
                 RestoreSwitches(options);   // 内部会调用 RebuildSwitches，保证复选框存在
@@ -321,10 +322,20 @@ public sealed partial class MainWindow : Window
     private void ShowLogs(object sender, RoutedEventArgs args) { Navigation.SelectedItem = LogsItem; ShowPage("logs"); }
     private void ShowOverview(object sender, RoutedEventArgs args) { Navigation.SelectedItem = OverviewItem; ShowPage("overview"); }
     private void ShowDashboard(object sender, RoutedEventArgs args) { Navigation.SelectedItem = DashboardItem; ShowPage("dashboard"); }
+    /// <summary>把当前选择应用到窗口。载入配置和用户切换都走这里，保证启动时主题一致。</summary>
+    private void ApplyTheme()
+    {
+        Root.RequestedTheme = ThemeChoice.SelectedIndex switch
+        {
+            1 => ElementTheme.Light,
+            2 => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+    }
     private void ThemeChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!_ready) return;
-        Root.RequestedTheme = ThemeChoice.SelectedIndex switch { 1 => ElementTheme.Light, 2 => ElementTheme.Dark, _ => ElementTheme.Default };
+        ApplyTheme();
         AutoSave();
     }
 

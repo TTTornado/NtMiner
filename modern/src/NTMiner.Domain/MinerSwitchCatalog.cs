@@ -27,8 +27,23 @@ public static class MinerSwitchCatalog
         _ => SrbMiner
     };
 
-    /// <summary>SRBMiner 当前适配器只使用固定参数集，暂不暴露可选项。</summary>
-    private static readonly MinerSwitch[] SrbMiner = [];
+    /// <summary>依据 SRBMiner-Multi 官方 Parameters 文档，只收录适配器可安全追加的开关。</summary>
+    private static readonly MinerSwitch[] SrbMiner =
+    [
+        // ---- 常用 ----
+        new("DisableWorkerWatchdog", "禁用崩溃检测，内核异常后不自动重启", "--disable-worker-watchdog"),
+        new("GpuSensorsDisable", "禁用 GPU 传感器读取（减少驱动调用）", "--gpu-sensors-disable"),
+        new("DisableHugePages", "禁用大页内存分配", "--disable-huge-pages"),
+
+        // ---- 高级 ----
+        new("ExtendedLog", "输出更详细的日志", "--extended-log", IsAdvanced: true),
+        new("DisableExtranonceSubscribe", "不向矿池发送 extranonce.subscribe", "--disable-extranonce-subscribe", IsAdvanced: true),
+        new("DisableAutoAffinity", "禁用 CPU 线程的自动亲和性设置", "--disable-auto-affinity", IsAdvanced: true),
+        new("GpuTableSlowBuild", "减缓 DAG/Datatable 构建，缓解构建阶段崩溃", "--gpu-table-slow-build", IsAdvanced: true),
+        new("DisableGpuDualKernels", "禁用优化双内核", "--disable-gpu-dual-kernels", IsAdvanced: true),
+        new("ForcedShutdown", "重启或关闭时不尝试释放资源", "--forced-shutdown", IsAdvanced: true),
+        new("EnableRestartOnRejected", "拒绝份额过多时自动重启内核", "--enable-restart-on-rejected", IsAdvanced: true)
+    ];
 
     private static readonly MinerSwitch[] BzMiner =
     [

@@ -24,8 +24,30 @@ public sealed class SrbMinerAdapter(string demoExecutable) : IMinerAdapter
             "--wallet", options.Wallet, "--worker", options.Worker, "--password", "x", "--disable-cpu",
             "--gpu-disable-oc", "--disable-msr-tweaks" })
             info.ArgumentList.Add(argument);
+        // 已启用的内核参数；未知名称不在映射表中，不会拼进启动命令。
+        foreach (var name in options.KernelSwitches)
+            if (SrbSwitchMap.TryGetValue(name, out var extra))
+                foreach (var part in extra) info.ArgumentList.Add(part);
         return info;
     }
+
+    /// <summary>
+    /// 开关名到真实参数的映射，依据 SRBMiner-Multi 官方 Parameters 文档。
+    /// 名称与 MinerSwitchCatalog 中的定义一一对应，不在表中的名称不产生任何参数。
+    /// </summary>
+    private static readonly Dictionary<string, string[]> SrbSwitchMap = new(StringComparer.Ordinal)
+    {
+        ["DisableWorkerWatchdog"] = ["--disable-worker-watchdog"],
+        ["GpuSensorsDisable"] = ["--gpu-sensors-disable"],
+        ["DisableHugePages"] = ["--disable-huge-pages"],
+        ["ExtendedLog"] = ["--extended-log"],
+        ["DisableExtranonceSubscribe"] = ["--disable-extranonce-subscribe"],
+        ["DisableAutoAffinity"] = ["--disable-auto-affinity"],
+        ["GpuTableSlowBuild"] = ["--gpu-table-slow-build"],
+        ["DisableGpuDualKernels"] = ["--disable-gpu-dual-kernels"],
+        ["ForcedShutdown"] = ["--forced-shutdown"],
+        ["EnableRestartOnRejected"] = ["--enable-restart-on-rejected"]
+    };
 
     public MinerObservation Parse(string line)
     {

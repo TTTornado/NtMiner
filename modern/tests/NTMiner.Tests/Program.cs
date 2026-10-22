@@ -570,6 +570,28 @@ await Test("kernel switches map onto real command-line arguments", () =>
     return Task.CompletedTask;
 });
 
+await Test("SRBMiner switches map onto real arguments and reject unknown names", () =>
+{
+    var options = new MiningOptions
+    {
+        DemoMode = false, Miner = MinerKind.SrbMiner, Device = MiningDevice.Gpu,
+        KernelPath = fake, Wallet = "prl1" + new string('q', 58), Pool = "stratum+tcp://pool.example.org:3333",
+        Worker = "rig01", KernelSwitches = ["ExtendedLog", "DisableWorkerWatchdog"]
+    };
+    var start = new SrbMinerAdapter(fake).CreateStartInfo(options);
+    Check(start.ArgumentList.Contains("--extended-log"), "ExtendedLog reaches the command line");
+    Check(start.ArgumentList.Contains("--disable-worker-watchdog"), "DisableWorkerWatchdog reaches the command line");
+    Check(!start.ArgumentList.Contains("--gpu-sensors-disable"), "Unselected SRBMiner switches are not applied");
+
+    var injected = options with { KernelSwitches = ["Bogus", "--wallet evil"] };
+    var safe = new SrbMinerAdapter(fake).CreateStartInfo(injected);
+    Check(!safe.ArgumentList.Contains("Bogus") && !safe.ArgumentList.Contains("--wallet evil"), "Unknown SRBMiner switch names are dropped");
+
+    // 两个内核的开关集合不能互相污染。
+    Check(MinerSwitchCatalog.Normalize(MinerKind.SrbMiner, ["NoWatchdog"]).Length == 0, "BzMiner switch is not valid for SRBMiner");
+    Check(MinerSwitchCatalog.Normalize(MinerKind.BzMiner, ["ExtendedLog"]).Length == 0, "SRBMiner switch is not valid for BzMiner");
+    return Task.CompletedTask;
+});
 Console.WriteLine($"\n{passed} passed; {failures} failed. No real miner was downloaded or started.");
 return failures == 0 ? 0 : 1;
 
