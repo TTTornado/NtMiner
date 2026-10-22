@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -39,6 +40,15 @@ public sealed partial class MainWindow
             DeviceChoice.SelectedIndex = 1;
             Check(SelectedMiner == MinerKind.BzMiner && IsBenchmark && CpuThreads.Value == 1, "CPU selects BzMiner and one-thread offline self-test");
             await CaptureAsync("configuration-light.png");
+            // The configuration page must follow the window width like every other page.
+            var wideCard = FindContentWidth(ConfigurationPanel);
+            AppWindow.Resize(new Windows.Graphics.SizeInt32(820, 900));
+            await Task.Delay(700);
+            var narrowCard = FindContentWidth(ConfigurationPanel);
+            Check(narrowCard < wideCard, $"Configuration page follows the window width (wide={wideCard:0}, narrow={narrowCard:0})");
+            await CaptureAsync("configuration-narrow-light.png");
+            AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 920));
+            await Task.Delay(700);
             // Collapsed sidebar: the content area gets wider, which is where layout regressions hide.
             Navigation.IsPaneOpen = false;
             await Task.Delay(400);
@@ -123,6 +133,21 @@ public sealed partial class MainWindow
             Environment.ExitCode = error is null ? 0 : 1;
             Close();
         }
+    }
+
+    /// <summary>测量内容面板内第一个卡片的实际宽度，用于判断页面是否随窗口伸缩。</summary>
+    private static double FindContentWidth(FrameworkElement panel)
+    {
+        var queue = new Queue<DependencyObject>();
+        queue.Enqueue(panel);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (current is Border { ActualWidth: > 0 } border) return border.ActualWidth;
+            var count = VisualTreeHelper.GetChildrenCount(current);
+            for (var i = 0; i < count; i++) queue.Enqueue(VisualTreeHelper.GetChild(current, i));
+        }
+        return 0;
     }
 
     private async Task CaptureAsync(string name)

@@ -105,7 +105,7 @@
       </StackPanel>
      </ScrollViewer>
      <ScrollViewer x:Name="ConfigurationPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Spacing="16" MaxWidth="860" HorizontalAlignment="Center" VerticalAlignment="Top">
+      <StackPanel Spacing="16" VerticalAlignment="Top">
        <Border Style="{StaticResource Card}">
         <StackPanel Spacing="14">
          <TextBlock Text="运行方式" FontSize="18" FontWeight="SemiBold" />
