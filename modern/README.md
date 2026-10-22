@@ -102,7 +102,7 @@ WinUI 的 **硬件仪表盘**页只读检测本机硬件：处理器核心与频
 | 工程 | 职责 |
 |---|---|
 | NTMiner.Domain | 配置、状态、协议模型，目标 net10.0 |
-| NTMiner.Application | 适配器契约、单任务生命周期与重试，目标 net10.0 |
+| NTMiner.Application | 适配器契约、单任务生命周期与重试；状态机与会话协调分离，目标 net10.0 |
 | NTMiner.Infrastructure | Windows Job、SRBMiner 参数/日志、配置文件、本机通信与只读硬件探测 |
 | NTMiner.Agent | 后台命令处理和连接租约，并持有硬件探测（WMI 在这里可用） |
 | NTMiner.Desktop | WPF 工作台及用户操作（当前冻结，新功能只进 WinUI） |

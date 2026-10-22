@@ -2,6 +2,14 @@
 
 日期：2026-10-21。环境：Windows x64，便携 .NET SDK 10.0.402。
 
+## 0.4 会话状态机与重试策略抽取（2026-10-22）
+
+把 `MiningSession` 中散落在 8 处的状态赋值收敛到 `SessionStateMachine`，把重试次数与退避规则抽成 `RetryPolicy`。属纯重构，不改行为：重构前后后台验收均为 33 项、WinUI 22 项通过；重构后新增 2 项纯逻辑验收，合计 **后台 35 项通过、0 失败**。
+
+新增验收覆盖：Failed 为终态且不会被迟到的份额事件改回 Mining；Illegal 转换被拒绝且状态不变；用户主动停止导致的收尾不显示为失败；重试预算 3 次、关闭自动恢复与离线自测不重试、致命错误不重试、退避为 2/4/8 秒、异常入参不溢出。这 2 项不启动进程、不等待退避，全程毫秒级。
+
+**重构过程中暴露并修复的一处缺陷**：初版在异常路径先 `Reset()` 再转 Failed，而 `Idle → Failed` 不在允许表内，导致失败后状态停留在 Idle，7 项与失败收尾相关的验收因此超时。改为由状态机自己决定 `Fault()` 的去向（Stopping 收尾转 Idle，其余转 Failed）。这个错误被现有回归测试当场拦住，说明重构前记录的基线是有效的。
+
 ## 0.4 硬件仪表盘（2026-10-22）
 
 执行 `scripts/Build.ps1 -Action Test -Configuration Release` 与 `scripts/BuildWinUI.ps1 -Action Test -Configuration Release`。后台与 WPF Release 构建 0 警告、0 错误；后台验收 **33 项通过、0 失败**（新增 2 项）；WinUI 实际窗口验收 **22 项通过**（原 16 项 + 新增 6 项仪表盘检查）。

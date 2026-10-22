@@ -495,6 +495,53 @@ await Test("hardware probe reports this machine without throwing", () =>
     return Task.CompletedTask;
 });
 
+await Test("state machine rejects illegal transitions and never leaves Failed", () =>
+{
+    var machine = new SessionStateMachine();
+    Check(machine.Current == MiningState.Idle, "Starts idle");
+    machine.Transition(MiningState.Starting);
+    machine.Transition(MiningState.Running);
+    machine.Transition(MiningState.Mining);
+    machine.Fault();
+    Check(machine.Current == MiningState.Failed, "Fault enters terminal state");
+    // 关键回归：迟到的份额事件不得把已失败的任务改回"正在挖矿"。
+    Check(!machine.TryTransition(MiningState.Mining), "Failed must not fall back to Mining");
+    Check(!machine.TryTransition(MiningState.Running), "Failed must not fall back to Running");
+    Check(machine.Current == MiningState.Failed, "Rejected transition leaves state unchanged");
+    Check(machine.IsTerminal, "Failed is terminal");
+    // 只有显式重新开始才能离开终态。
+    machine.Reset();
+    machine.Transition(MiningState.Starting);
+    Check(machine.Current == MiningState.Starting, "Explicit restart leaves the terminal state");
+    Check(!SessionStateMachine.IsAllowed(MiningState.Idle, MiningState.Running), "Idle cannot jump to Running");
+    Check(!SessionStateMachine.IsAllowed(MiningState.Starting, MiningState.Mining), "Cannot mine before running");
+    Check(SessionStateMachine.IsAllowed(MiningState.Running, MiningState.Recovering), "Recovery is reachable from Running");
+    Check(SessionStateMachine.IsAllowed(MiningState.Recovering, MiningState.Starting), "Recovery returns to Starting");
+    var stopping = new SessionStateMachine();
+    stopping.Transition(MiningState.Starting);
+    stopping.Transition(MiningState.Stopping);
+    stopping.Fault();
+    Check(stopping.Current == MiningState.Idle, "A user-requested stop is not reported as a failure");
+    return Task.CompletedTask;
+});
+await Test("retry policy encodes the documented backoff without waiting", () =>
+{
+    var policy = new RetryPolicy();
+    var demo = new MiningOptions();
+    Check(policy.MaxRestarts == 3, "Three restarts by default");
+    Check(policy.ShouldRetry(demo, 0, false), "First failure retries");
+    Check(policy.ShouldRetry(demo, 2, false), "Third failure still retries");
+    Check(!policy.ShouldRetry(demo, 3, false), "Budget exhausted after three restarts");
+    Check(!policy.ShouldRetry(demo with { AutoRecover = false }, 0, false), "Disabled recovery never retries");
+    Check(!policy.ShouldRetry(demo with { BenchmarkMode = true }, 0, false), "Offline self-test never retries");
+    Check(!policy.ShouldRetry(demo, 0, fatal: true), "Fatal configuration errors never retry");
+    Check(policy.DelayFor(0) == TimeSpan.FromSeconds(2) && policy.DelayFor(1) == TimeSpan.FromSeconds(4)
+        && policy.DelayFor(2) == TimeSpan.FromSeconds(8), "Backoff is 2, 4, 8 seconds");
+    Check(policy.DelayFor(100) <= TimeSpan.FromDays(1), "Extreme attempt numbers do not overflow");
+    Check(RetryPolicy.NextRestartNumber(0) == 1, "Restart numbers are one-based for display");
+    return Task.CompletedTask;
+});
+
 Console.WriteLine($"\n{passed} passed; {failures} failed. No real miner was downloaded or started.");
 return failures == 0 ? 0 : 1;
 
