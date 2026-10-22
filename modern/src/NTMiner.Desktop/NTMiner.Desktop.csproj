@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <Version>0.2.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NTMiner.Infrastructure\NTMiner.Infrastructure.csproj" />
+    <ProjectReference Include="..\NTMiner.Agent\NTMiner.Agent.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\tests\NTMiner.FakeMiner\NTMiner.FakeMiner.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <Target Name="CopyCompanionApplications" AfterTargets="Build">
+    <ItemGroup>
+      <Companion Include="..\NTMiner.Agent\bin\$(Configuration)\$(TargetFramework)\*" />
+      <Companion Include="..\..\tests\NTMiner.FakeMiner\bin\$(Configuration)\$(TargetFramework)\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(Companion)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><ProjectReference Include="..\NTMiner.Application\NTMiner.Application.csproj" /></ItemGroup>
+</Project>

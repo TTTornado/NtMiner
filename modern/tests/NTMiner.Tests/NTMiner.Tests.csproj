@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NTMiner.Infrastructure\NTMiner.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\NTMiner.Agent\NTMiner.Agent.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\NTMiner.FakeMiner\NTMiner.FakeMiner.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <Target Name="CopyTestProcesses" AfterTargets="Build">
+    <ItemGroup>
+      <Companion Include="..\..\src\NTMiner.Agent\bin\$(Configuration)\$(TargetFramework)\*" />
+      <Companion Include="..\NTMiner.FakeMiner\bin\$(Configuration)\$(TargetFramework)\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(Companion)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

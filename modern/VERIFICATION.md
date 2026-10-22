@@ -1,0 +1,84 @@
+# Preview 0.4 验证记录
+
+日期：2026-10-21。环境：Windows x64，便携 .NET SDK 10.0.402。
+
+## 0.4 核显接入与反馈验收（2026-10-22）
+
+执行 `scripts/Build.ps1 -Action Test -Configuration Release` 和 Windows PowerShell 下的 `scripts/BuildWinUI.ps1 -Action Test -Configuration Release`。后台/WPF 与独立 WinUI Release 构建均为 0 警告、0 错误；后台 31 项通过、0 失败，WPF 界面回归通过，WinUI 16 项通过。
+
+新增验收覆盖：CPU/全部 GPU/仅核显的 BzMiner 离线参数、裸 `--igpu` 和无钱包/矿池参数、GPU 模式禁用 CPU 挖矿、v2 配置迁移保留原设备选择及 v3 核显保存、真实日志形状的设备名与内存数字解析、设备名通过 IPC 传递、内存不足时停止清理且不重试、离线模式由后台强制不自动重试。状态展示分别验证零算力、新鲜正算力、超过 30 秒未更新、失败后隐藏算力。
+
+WinUI 窗口覆盖仅核显联动、CPU 控件隐藏、GPU 离线演示启停、模拟设备标识、v3 保存和错误反馈。已目视检查 `artifacts/winui/igpu-demo-light.png`、`configuration-dark.png`、`igpu-memory-sample-dark.png`。带 `sample` 的截图来自受控状态注入，不能作为新一轮硬件测试证据。其他界面验收均只使用模拟进程，没有执行真实挖矿或连接矿池。
+
+本轮没有覆盖原来的真实 profile、修改内核安装目录或提交/推送代码。完整输出见 `artifacts/validation.log`、`artifacts/winui-validation.log`，界面结果见 `artifacts/winui/result.json`。
+
+已有核显硬件证据（2026-10-21）：官方 BzMiner v100.46，Intel UHD Graphics 730，驱动 32.0.101.7088，OpenCL 3.0 NEO。首次仅核显 PRL 离线任务报告需 1353 + 384 MB，只有 1636 MB 可用，跳过设备。用户释放内存后再次运行，启动前约 2847 MB 可用，45 秒限时内记录 22.04、14.70、22.05、27.58 GH/s，无错误行，结束后无残留内核进程。该次直接运行内核、未经过本次新增的 WinUI 交互；结果与日志在 `artifacts/bz-igpu-real/retry-2/`。短时正算力不能证明长期稳定性或矿池有效份额。
+
+## 0.3 WinUI 新增验证
+
+独立执行 `scripts/BuildWinUI.ps1 -Action Test -Configuration Release`，Windows App SDK 2.5.1，x64、未打包、自带 Windows App Runtime 依赖。Release 构建 0 警告、0 错误；实际 WinUI 窗口 9 项自动验收通过。
+
+覆盖默认演示及无自动启动、SRBMiner 模拟指标、停止回到空闲、CPU 联动 BzMiner/单线程/离线自测、离线模拟不显示份额、导航保留日志、离线隐藏收款字段、真实配置无效时拒绝启动、共享配置格式保存。浅色和深色各生成三张实际界面截图，已目视检查概览、配置、日志布局。测试使用独立配置和模拟进程，不运行真实挖矿。
+
+结果见 `artifacts/winui/result.json`（Passed=true，9 项）；构建日志见 `artifacts/winui-validation.log`，截图见 `artifacts/winui/`。原生文件选择器、导出对话框及真实启动确认尚未逐项人工点击验收，不能把构建成功当作这些流程已完成交互验证。
+
+新增前端后再次运行后台与 WPF Release 验收：0 警告、0 错误，24 项后台验收全部通过，WPF 界面验收通过。WinUI 启动/测试脚本另用 Windows PowerShell 执行通过，与双击入口一致。
+
+以下记录为共用后台与 WPF 的验收及既有硬件验证边界。
+
+执行：`scripts/Build.ps1 -Action Test -Configuration Release`。
+
+## 结果
+
+- Release 构建：0 警告、0 错误。
+- Preview 0.2 控制台验收：24 通过、0 失败；完整结果见 `artifacts/validation.log`。
+- WPF 界面验收：通过。
+- 界面预览：`artifacts/ui/preview-idle.png`、`artifacts/ui/preview-demo.png`，已查看演示图并修正日志的垂直对齐。
+- 完整控制台输出：`artifacts/validation.log`（本机构建产物，不纳入版本控制）。
+
+## 验收覆盖
+
+1. 配置缺失、格式错误、未知版本拒绝。
+2. 钱包及矿池结构校验、参数独立传递、TLS 映射。
+3. 总算力/份额事件解析，排除单卡速度和累计摘要的重复计数。
+4. 配置写入读取、未知版本保留。
+5. 消息长度限制。
+6. 启动、份额、重复启动拒绝、停止和再次启动。
+7. 停止时清理模拟内核子进程。
+8. 有进程但没有份额时保持“等待份额”。
+9. 超长日志安全终止，不无限重试。
+10. 用户关闭恢复时不重启。
+11. 三次重试上限。
+12. 停止操作取消重试等待。
+13. 配置错误不重试。
+14. 命名管道连接、状态、启动、停止和关闭。
+15. 控制连接正常释放后的进程回收。
+16. 控制进程未清理即退出后的进程回收。
+
+WPF 验收额外检查首次默认演示、真实配置区域禁用、模拟指标和标识、演示启停、无效真实配置提示，并渲染了实际 WPF 控件树供布局检查。
+
+## 未验证边界
+
+没有使用真实 SRBMiner、显卡负载或矿池。矿池有效算力、拒绝率、温度、功耗与收益均未验证。使用外部内核前仍需用户核对文件来源、地址和矿池。
+
+进程和 IPC 测试需要正常 Windows 用户权限，受限沙箱可能阻止命名管道或文件替换；没有通过弱化命名管道访问控制来解决此限制。
+
+## 0.2 新增验证
+
+- BzMiner/CPU 合法组合、线程上下限、文件类型匹配。
+- 仅 CPU 和仅 GPU 参数、TLS 钱包保留、独立配置、不启用默认管理接口或自动下载。
+- 新旧日志格式、真实 v100.46 摘要行与紧凑算力单位、重复累计摘要去重。
+- v1 配置迁移，CPU/离线设置持久化。
+- Agent 内核路由、CPU 池模式演示、离线演示不显示矿池份额。
+- 内存不足的设备跳过错误会终止任务而不重试。
+- WPF 设备联动、CPU 默认一线程、离线字段隐藏/说明、模拟启停和新增截图。
+
+## 真实 BzMiner CPU 检查
+
+从官方 GitHub v100.46 发布页下载 Windows ZIP，SHA-256 核对通过。内核本体 SHA-256：`B702AB94114EE516537063A8688BEEF69D7D5F88B92A37964556CB7A242D1C72`。没有把该内核复制到源码或发行输出。
+
+硬件：Intel Core i5-13400，10 核 / 16 逻辑线程。通过本项目相同的适配器和进程管理流程，显式启用 `--bench`，1 个 CPU 线程，关闭 GPU 和网络管理/发现接口。
+
+首次限时运行确认了 `pearl-bench` 任务、CPU-only 设备和一条 `smry` 算力行 `24.23gh`；当时客户端尚未适配表格，所以该次严格验收没有通过。随后根据真实输出补齐表头及摘要解析。后续运行报告：PRL 任务需要 1097 MB 加 384 MB 工作空间，系统只有 1234 MB 可用，设备被跳过，算力为零；该次也未通过，不声明硬件自测完成。已增加对这个错误的识别和模拟回归验收。
+
+最后一次实际运行及停止快照保存在 `artifacts/bz-cpu-real/result.json`，对应日志在同目录 `cpu-probe.log`，BzMiner 解析后的配置在 `resolved-config.json`。其中结果来自增加内存错误识别前的实际运行，保留失败证据；新错误处理由自动化测试覆盖，不为获取成功结果而修改主机内存、安全策略或关闭用户应用。
