@@ -40,7 +40,10 @@ public sealed partial class MainWindow : Window
         Navigation.PaneOpened += (_, _) => UpdatePaneFooter();
         Navigation.PaneClosing += (_, _) => UpdatePaneFooter();
         Navigation.PaneClosed += (_, _) => UpdatePaneFooter();
-        UpdatePaneFooter();
+        // DisplayMode 与 IsPaneOpen 要等首次布局才确定；构造函数里读到的是默认值，
+        // 会把底部说明误判为收起态而隐藏。改为布局完成后与每次尺寸变化时重新判断。
+        Navigation.Loaded += (_, _) => UpdatePaneFooter();
+        Navigation.SizeChanged += (_, _) => UpdatePaneFooter();
         CpuThreads.Maximum = Environment.ProcessorCount;
         CpuHint.Text = $"本机 {Environment.ProcessorCount} 个逻辑线程；建议先用 1 个线程验证。";
         _ready = true;
@@ -271,7 +274,8 @@ public sealed partial class MainWindow : Window
     {
         if (PaneFooterText is null) return;
         // 收起后侧边栏只剩图标，说明文字没有空间，直接隐藏。
-        var wide = Navigation.IsPaneOpen && Navigation.DisplayMode != NavigationViewDisplayMode.Minimal;
+        var wide = Navigation.ActualWidth > 0 && Navigation.IsPaneOpen
+            && Navigation.DisplayMode != NavigationViewDisplayMode.Minimal;
         PaneFooterText.Visibility = wide ? Visibility.Visible : Visibility.Collapsed;
     }
 
