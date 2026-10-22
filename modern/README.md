@@ -93,7 +93,7 @@ WinUI 的 **硬件仪表盘**页只读检测本机硬件：处理器核心与频
 ```powershell
 .\scripts\Build.ps1 -Action Build
 .\scripts\Build.ps1 -Action Test
-.\scripts\Build.ps1 -Action Run
+.\scripts\Build.ps1 -Action Run          # 等同 Start-WinUI.cmd，仅转发到 WinUI
 
 # 首次或新增依赖后联网补齐工作区包缓存；之后构建仍可离线。
 .\scripts\Build.ps1 -Action Build -RestorePackages
