@@ -19,7 +19,8 @@
    <NavigationView.MenuItems>
     <NavigationViewItem x:Name="OverviewItem" Content="运行概览" Tag="overview" IsSelected="True"><NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem x:Name="DashboardItem" Content="硬件仪表盘" Tag="dashboard"><NavigationViewItem.Icon><SymbolIcon Symbol="Calculator" /></NavigationViewItem.Icon></NavigationViewItem>
-    <NavigationViewItem x:Name="ConfigurationItem" Content="挖矿配置" Tag="configuration"><NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon></NavigationViewItem>
+    <NavigationViewItem x:Name="ConfigurationItem" Content="挖矿配置" Tag="configuration"><NavigationViewItem.Icon><SymbolIcon Symbol="Edit" /></NavigationViewItem.Icon></NavigationViewItem>
+    <NavigationViewItem x:Name="SettingsItem" Content="设置" Tag="settings"><NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem x:Name="LogsItem" Content="运行日志" Tag="logs"><NavigationViewItem.Icon><SymbolIcon Symbol="Document" /></NavigationViewItem.Icon></NavigationViewItem>
    </NavigationView.MenuItems>
    <NavigationView.PaneFooter>
@@ -112,40 +113,86 @@
      </ScrollViewer>
      <ScrollViewer x:Name="ConfigurationPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="16" VerticalAlignment="Top">
+       <InfoBar x:Name="RestartHint" IsOpen="False" IsClosable="False" Severity="Warning" Title="改动需要重启任务才会生效"
+         Message="当前任务仍在按旧参数运行。停止后重新启动即可应用新配置。" />
+
        <Border Style="{StaticResource Card}">
         <StackPanel Spacing="14">
-         <TextBlock Text="运行方式" FontSize="18" FontWeight="SemiBold" />
-         <ToggleSwitch x:Name="DemoMode" Header="演示模式" OnContent="模拟数据，不使用真实内核" OffContent="使用本机内核" IsOn="True" Toggled="ModeChanged" />
+         <TextBlock Text="挖矿内核" FontSize="18" FontWeight="SemiBold" />
          <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-          <ComboBox x:Name="MinerChoice" Header="挖矿内核" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="MinerSelectionChanged"><ComboBoxItem Content="SRBMiner" /><ComboBoxItem Content="BzMiner" /></ComboBox>
+          <ComboBox x:Name="MinerChoice" Header="内核" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="MinerSelectionChanged"><ComboBoxItem Content="SRBMiner" /><ComboBoxItem Content="BzMiner" /></ComboBox>
           <ComboBox Grid.Column="1" x:Name="DeviceChoice" Header="设备" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="MinerSelectionChanged"><ComboBoxItem Content="全部 GPU" /><ComboBoxItem Content="CPU" /><ComboBoxItem Content="仅核显" /></ComboBox>
          </Grid>
-         <StackPanel x:Name="CpuOptions" Visibility="Collapsed" Spacing="12">
-          <NumberBox x:Name="CpuThreads" Header="CPU 线程数" Minimum="1" Value="1" SpinButtonPlacementMode="Inline" SmallChange="1" Width="220" HorizontalAlignment="Left" />
-          <TextBlock x:Name="CpuHint" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-         </StackPanel>
-         <CheckBox x:Name="BenchmarkMode" Content="离线自测：无需钱包或矿池，不产生收益" IsChecked="False" Click="ModeChanged" />
-         <TextBlock x:Name="DeviceHint" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-         <CheckBox x:Name="AutoRecover" Content="内核异常退出后自动恢复，最多 3 次" IsChecked="True" />
-        </StackPanel>
-       </Border>
-       <UserControl x:Name="RealFields" IsEnabled="False"><Border Style="{StaticResource Card}">
-        <StackPanel Spacing="14">
-         <TextBlock Text="本机内核与收款配置" FontSize="18" FontWeight="SemiBold" />
          <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-          <TextBox x:Name="KernelPath" Header="内核文件" PlaceholderText="请选择官方内核的 exe 文件" />
+          <TextBox x:Name="KernelPath" Header="内核文件" PlaceholderText="请选择官方内核的 exe 文件" TextChanged="FieldChanged" />
           <Button Grid.Column="1" Content="选择文件" VerticalAlignment="Bottom" Click="ChooseKernel" />
          </Grid>
-         <StackPanel x:Name="WalletFields" Spacing="14">
-          <TextBox x:Name="Wallet" Header="PRL 收款地址" PlaceholderText="prl1…（不要输入私钥或助记词）" />
-          <TextBox x:Name="Pool" Header="矿池地址" PlaceholderText="stratum+tcp://主机:端口" />
-          <TextBox x:Name="Worker" Header="矿机名" Text="rig01" />
+         <StackPanel x:Name="CpuOptions" Visibility="Collapsed" Spacing="12">
+          <NumberBox x:Name="CpuThreads" Header="CPU 线程数" Minimum="1" Value="1" SpinButtonPlacementMode="Inline" SmallChange="1" Width="220" HorizontalAlignment="Left" ValueChanged="NumberChanged" />
+          <TextBlock x:Name="CpuHint" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
          </StackPanel>
+         <TextBlock x:Name="DeviceHint" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+       </Border>
+
+       <Border Style="{StaticResource Card}">
+        <StackPanel Spacing="14">
+         <TextBlock Text="收款账户" FontSize="18" FontWeight="SemiBold" />
+         <TextBox x:Name="Wallet" Header="钱包地址" PlaceholderText="prl1…（不要输入私钥或助记词）" TextChanged="FieldChanged" />
+         <StackPanel x:Name="WalletFields" Spacing="14">
+          <TextBox x:Name="Pool" Header="矿池地址" PlaceholderText="stratum+tcp://主机:端口" TextChanged="FieldChanged" />
+          <TextBox x:Name="Worker" Header="矿机名" Text="rig01" TextChanged="FieldChanged" />
+         </StackPanel>
+         <CheckBox x:Name="BenchmarkMode" Content="离线自测：无需钱包或矿池，不产生收益" IsChecked="False" Click="ModeChanged" />
+         <CheckBox x:Name="AutoRecover" Content="内核异常退出后自动恢复，最多 3 次" IsChecked="True" Click="ModeChanged" />
          <TextBlock Text="请自行核对内核来源与完整收款地址。开发费按实际内核版本执行。" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
-       </Border></UserControl>
-       <Border Style="{StaticResource Card}"><StackPanel Spacing="12"><TextBlock Text="外观" FontSize="18" FontWeight="SemiBold" /><ComboBox x:Name="ThemeChoice" Header="主题" SelectedIndex="0" Width="220" SelectionChanged="ThemeChanged"><ComboBoxItem Content="跟随系统" /><ComboBoxItem Content="浅色" /><ComboBoxItem Content="深色" /></ComboBox></StackPanel></Border>
-       <StackPanel Orientation="Horizontal" Spacing="12"><Button x:Name="SaveButton" Content="保存配置" Click="SaveConfiguration" /><Button Content="返回运行概览" Click="ShowOverview" /></StackPanel>
+       </Border>
+
+       <Border Style="{StaticResource Card}">
+        <StackPanel Spacing="12">
+         <TextBlock Text="内核参数" FontSize="18" FontWeight="SemiBold" />
+         <TextBlock x:Name="SwitchHint" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+         <StackPanel x:Name="CommonSwitchPanel" Spacing="2" />
+         <Expander x:Name="AdvancedSwitches" Header="高级设置" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+          <StackPanel x:Name="AdvancedSwitchPanel" Spacing="2" Padding="0,8,0,0" />
+         </Expander>
+        </StackPanel>
+       </Border>
+
+       <Border Style="{StaticResource Card}">
+        <StackPanel Spacing="10">
+         <Grid><TextBlock Text="原始命令行参数" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="预览" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid>
+         <TextBox x:Name="CommandLinePreview" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                  MinHeight="72" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+         <TextBlock x:Name="CommandLineNote" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+       </Border>
+
+       <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Content="返回运行概览" Click="ShowOverview" />
+        <TextBlock x:Name="AutoSaveState" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+       </StackPanel>
+      </StackPanel>
+     </ScrollViewer>
+     <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16" VerticalAlignment="Top" MaxWidth="720" HorizontalAlignment="Left">
+       <Border Style="{StaticResource Card}">
+        <StackPanel Spacing="14">
+         <TextBlock Text="外观" FontSize="18" FontWeight="SemiBold" />
+         <ComboBox x:Name="ThemeChoice" Header="主题" SelectedIndex="0" Width="240" HorizontalAlignment="Left" SelectionChanged="ThemeChanged"><ComboBoxItem Content="跟随系统" /><ComboBoxItem Content="浅色" /><ComboBoxItem Content="深色" /></ComboBox>
+         <TextBlock Text="主题选择保存在本机配置，下次打开窗口时沿用。" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+       </Border>
+       <Border Style="{StaticResource Card}">
+        <StackPanel Spacing="14">
+         <TextBlock Text="运行" FontSize="18" FontWeight="SemiBold" />
+         <ToggleSwitch x:Name="DemoMode" Header="演示模式" OnContent="模拟数据，不使用真实内核" OffContent="使用本机内核" IsOn="True" Toggled="ModeChanged" />
+         <TextBlock Text="演示模式使用内置模拟内核，显示模拟算力与份额，不连接矿池、不产生收益，也不会执行你选择的内核文件。"
+                    FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+       </Border>
       </StackPanel>
      </ScrollViewer>
      <Grid x:Name="LogsPanel" Visibility="Collapsed" RowSpacing="12">

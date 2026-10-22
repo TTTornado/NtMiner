@@ -165,7 +165,7 @@ await Test("BzMiner parser recognizes distinct events and CPU-only no-GPU startu
     Check(adapter.Parse("| 255:0 | t1 | -- | 7/1/0 | -- | -- | 24.23gh | Mining | |").Hashrate is null, "Ignore per-device table rows");
     return Task.CompletedTask;
 });
-await Test("v1 profile migrates to v3 without enabling a new CPU or offline task", async () =>
+await Test("v1 profile migrates to v4 without enabling a new CPU or offline task", async () =>
 {
     var folder = Path.Combine(AppContext.BaseDirectory, "profile-v1-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(folder);
@@ -176,12 +176,12 @@ await Test("v1 profile migrates to v3 without enabling a new CPU or offline task
         await File.WriteAllTextAsync(path, legacy);
         var store = new ProfileStore(path);
         var migrated = await store.LoadAsync();
-        Check(migrated.SchemaVersion == 3 && migrated.Miner == MinerKind.SrbMiner && migrated.Device == MiningDevice.Gpu && !migrated.BenchmarkMode, "Keep previous semantics");
+        Check(migrated.SchemaVersion == 4 && migrated.Miner == MinerKind.SrbMiner && migrated.Device == MiningDevice.Gpu && !migrated.BenchmarkMode, "Keep previous semantics");
         Check(migrated.Worker == "old_rig" && migrated.Wallet == "old_address" && !migrated.DemoMode, "Preserve legacy fields");
         Check(await File.ReadAllTextAsync(path) == legacy, "Migration does not automatically overwrite");
         var cpu = migrated with { Miner = MinerKind.BzMiner, Device = MiningDevice.Cpu, CpuThreads = 1, BenchmarkMode = true };
         await store.SaveAsync(cpu);
-        Check(await store.LoadAsync() == cpu, "CPU and benchmark settings round-trip");
+        Check(System.Text.Json.JsonSerializer.Serialize(await store.LoadAsync()) == System.Text.Json.JsonSerializer.Serialize(cpu), "CPU and benchmark settings round-trip");
     }
     finally { File.Delete(path); Directory.Delete(folder); }
 });
@@ -251,7 +251,7 @@ await Test("GPU and igpu offline arguments exclude CPU, pools and payout", () =>
     finally { if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true); }
     return Task.CompletedTask;
 });
-await Test("v2 migration preserves CPU and GPU semantics; igpu v3 round-trips", async () =>
+await Test("v2 migration preserves CPU and GPU semantics; igpu round-trips at v4", async () =>
 {
     var folder = Path.Combine(AppContext.BaseDirectory, "profile-v2-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(folder);
@@ -264,11 +264,11 @@ await Test("v2 migration preserves CPU and GPU semantics; igpu v3 round-trips", 
             var previous = new MiningOptions { SchemaVersion = 2, Miner = MinerKind.BzMiner, Device = device, BenchmarkMode = device == MiningDevice.Cpu, DemoMode = false, Wallet = "keep_address" };
             var serialized = System.Text.Json.JsonSerializer.Serialize(previous);
             await File.WriteAllTextAsync(path, serialized);
-            Check(await store.LoadAsync() == previous with { SchemaVersion = 3 }, "Migration cannot silently widen device mode");
+            Check(System.Text.Json.JsonSerializer.Serialize(await store.LoadAsync()) == System.Text.Json.JsonSerializer.Serialize(previous with { SchemaVersion = 4 }), "Migration cannot silently widen device mode");
             Check(await File.ReadAllTextAsync(path) == serialized, "Loading preserves old file until explicit save");
         }
         var igpu = new MiningOptions { Miner = MinerKind.BzMiner, Device = MiningDevice.IntegratedGpu, BenchmarkMode = true };
-        await store.SaveAsync(igpu); Check(await store.LoadAsync() == igpu, "igpu setting survives reopening either frontend");
+        await store.SaveAsync(igpu); Check(System.Text.Json.JsonSerializer.Serialize(await store.LoadAsync()) == System.Text.Json.JsonSerializer.Serialize(igpu), "igpu setting survives reopening either frontend");
         await File.WriteAllTextAsync(path, "{\"SchemaVersion\":2,\"Device\":2}");
         await Throws<InvalidDataException>(async () => await store.LoadAsync());
     }
@@ -539,6 +539,34 @@ await Test("retry policy encodes the documented backoff without waiting", () =>
         && policy.DelayFor(2) == TimeSpan.FromSeconds(8), "Backoff is 2, 4, 8 seconds");
     Check(policy.DelayFor(100) <= TimeSpan.FromDays(1), "Extreme attempt numbers do not overflow");
     Check(RetryPolicy.NextRestartNumber(0) == 1, "Restart numbers are one-based for display");
+    return Task.CompletedTask;
+});
+
+await Test("kernel switches map onto real command-line arguments", () =>
+{
+    var options = new MiningOptions
+    {
+        DemoMode = false, Miner = MinerKind.BzMiner, Device = MiningDevice.Cpu, CpuThreads = 1,
+        KernelPath = fake, BenchmarkMode = true, KernelSwitches = ["NoWatchdog", "LogDebug", "NoDuplicates"]
+    };
+    var start = new BzMinerAdapter(fake, Path.Combine(AppContext.BaseDirectory, "bz-switch-test")).CreateStartInfo(options);
+    Check(start.ArgumentList.Contains("--no-watchdog"), "NoWatchdog reaches the command line");
+    Check(start.ArgumentList.Contains("--log-level") && start.ArgumentList.Contains("debug"), "LogDebug passes its value");
+    Check(start.ArgumentList.Contains("--duplicate-devices") && start.ArgumentList.Contains("0"), "NoDuplicates passes its value");
+    Check(!start.ArgumentList.Contains("--internal-log"), "Unselected switches are not applied");
+
+    // 未知名称不能进入真实启动参数。
+    var unknown = options with { KernelSwitches = ["NotARealSwitch", "--wallet evil"] };
+    var safe = new BzMinerAdapter(fake, Path.Combine(AppContext.BaseDirectory, "bz-switch-test")).CreateStartInfo(unknown);
+    Check(!safe.ArgumentList.Contains("NotARealSwitch") && !safe.ArgumentList.Contains("--wallet evil"), "Unknown switch names are dropped");
+
+    // 换内核后旧开关要被过滤掉，避免把 BzMiner 参数带给 SRBMiner。
+    Check(MinerSwitchCatalog.Normalize(MinerKind.SrbMiner, ["NoWatchdog"]).Length == 0, "Switches are filtered per miner");
+    Check(MinerSwitchCatalog.Normalize(MinerKind.BzMiner, ["NoWatchdog", "Bogus"]).SequenceEqual(["NoWatchdog"]), "Valid switches survive normalization");
+
+    // 预览与真实参数必须一致，否则界面会误导用户。
+    var preview = MinerSwitchCatalog.Preview(options, options.KernelSwitches);
+    Check(preview.Contains("--no-watchdog") && preview.Contains("--log-level debug"), "Preview shows the same switches");
     return Task.CompletedTask;
 });
 

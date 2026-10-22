@@ -42,6 +42,11 @@ public sealed partial class MainWindow
             DeviceChoice.SelectedIndex = 1;
             Check(SelectedMiner == MinerKind.BzMiner && IsBenchmark && CpuThreads.Value == 1, "CPU selects BzMiner and one-thread offline self-test");
             await CaptureAsync("configuration-light.png");
+            ConfigurationPanel.ChangeView(null, ConfigurationPanel.ScrollableHeight, null, true);
+            await Task.Delay(400);
+            await CaptureAsync("configuration-switches-light.png");
+            ConfigurationPanel.ChangeView(null, 0, null, true);
+            await Task.Delay(300);
             // The configuration page must follow the window width like every other page.
             var wideCard = FindContentWidth(ConfigurationPanel);
             AppWindow.Resize(new Windows.Graphics.SizeInt32(820, 900));
@@ -108,14 +113,16 @@ public sealed partial class MainWindow
             Check(LogOutput.Text.Contains("[miner]"), "Logs remain visible across navigation");
             await CaptureAsync("logs-dark.png");
             Navigation.SelectedItem = ConfigurationItem; ShowPage("configuration");
-            DemoMode.IsOn = false;
-            Check(WalletFields.Visibility == Visibility.Collapsed && RealFields.IsEnabled, "Offline real mode hides payout fields");
+            DemoMode.IsOn = false;   // 开关位于设置页，但对象本身在任何页面都可访问
+            Check(WalletFields.Visibility == Visibility.Collapsed && KernelPath.IsEnabled, "Offline real mode hides payout fields");
             await StartTaskAsync();
             Check(FeedbackBar.Severity == InfoBarSeverity.Error && _state == MiningState.Idle, "Invalid real kernel rejected before confirmation or start");
             await CaptureAsync("configuration-dark.png");
             await _store.SaveAsync(Options());
             var saved = await _store.LoadAsync();
-            Check(saved.SchemaVersion == 3 && saved.Device == MiningDevice.IntegratedGpu && saved.BenchmarkMode, "WinUI saves igpu and benchmark in the shared v3 profile");
+            Check(saved.SchemaVersion == 4 && saved.Device == MiningDevice.IntegratedGpu && saved.BenchmarkMode, "WinUI saves igpu and benchmark in the shared v4 profile");
+            Check(CommandLinePreview.Text.Contains("--igpu") && CommandLinePreview.Text.Contains("--bench"), "Command-line preview reflects the selected device and offline mode");
+            Check(CommonSwitchPanel.Children.Count > 0 || AdvancedSwitchPanel.Children.Count > 0, "Kernel switches are rendered for the selected kernel");
             // Feed controlled snapshots only after stopping the actual demo session.
             _poll?.Stop();
             Navigation.SelectedItem = OverviewItem; ShowPage("overview");

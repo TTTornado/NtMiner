@@ -98,8 +98,39 @@ public sealed class BzMinerAdapter(string demoExecutable, string workingDirector
                 "--set", "backends.opencl=true", "--set", "superio_fans=false", "--set", "cache_qos=false"]);
         else
             arguments.AddRange(["--cpu", "0", "--nvidia", "1", "--amd", "1", "--intel", "1", "--devices", "all"]);
+        // 已启用的内核参数：按适配器定义的映射追加真实命令行片段。
+        // 未知名称被忽略，不会拼进启动命令。
+        foreach (var name in options.KernelSwitches)
+            if (AppendSwitch(arguments, name))
+                continue;
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
         return info;
+    }
+
+    /// <summary>
+    /// 把开关名翻译成真实命令行片段。返回 true 表示额外参数已并入 arguments。
+    /// 这里的映射必须与 MinerSwitchCatalog 中的 Argument 文字保持一致，
+    /// 否则界面预览会与真实启动参数不符。
+    /// </summary>
+    private static bool AppendSwitch(List<string> arguments, string name)
+    {
+        switch (name)
+        {
+            case "NoWatchdog": arguments.Add("--no-watchdog"); return true;
+            case "CpuMetrics": arguments.AddRange(["--cpu-metrics", "0"]); return true;
+            case "DisableHugePages": arguments.Add("--disable_huge_pages"); return true;
+            case "NoBandwidthTest": arguments.Add("--no-bandwidth-test"); return true;
+            case "LogDebug": arguments.AddRange(["--log-level", "debug"]); return true;
+            case "InternalLog": arguments.Add("--internal-log"); return true;
+            case "NoDuplicates": arguments.AddRange(["--duplicate-devices", "0"]); return true;
+            case "DisableSse": arguments.Add("--disable_sse"); return true;
+            case "DisableAvx2": arguments.Add("--disable_avx2"); return true;
+            case "DisableAvx512": arguments.Add("--disable_avx512"); return true;
+            case "WatchdogRestarts": arguments.AddRange(["--watchdog-restarts", "3"]); return true;
+            case "HashrateWindow": arguments.AddRange(["--hashrate-window", "30"]); return true;
+            case "NoColor": arguments.Add("--no-color"); return true;
+            default: return false;
+        }
     }
 
     public MinerObservation Parse(string line)

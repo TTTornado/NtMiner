@@ -4,10 +4,15 @@ namespace NTMiner.Modern;
 
 public enum MinerKind { SrbMiner, BzMiner }
 public enum MiningDevice { Gpu, Cpu, IntegratedGpu }
+public enum AppTheme { System, Light, Dark }
 
 public sealed record MiningOptions
 {
-    public int SchemaVersion { get; init; } = 3;
+    public int SchemaVersion { get; init; } = 4;
+    /// <summary>已启用的内核参数名；含义见 MinerSwitchCatalog。</summary>
+    public string[] KernelSwitches { get; init; } = [];
+    /// <summary>界面主题，与挖矿无关但一并保存在本机配置。</summary>
+    public AppTheme Theme { get; init; } = AppTheme.System;
     public MinerKind Miner { get; init; } = MinerKind.SrbMiner;
     public MiningDevice Device { get; init; } = MiningDevice.Gpu;
     public int CpuThreads { get; init; } = 1;
@@ -22,7 +27,7 @@ public sealed record MiningOptions
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
-        if (SchemaVersion != 3) errors.Add("配置版本不受支持，请重新填写配置。");
+        if (SchemaVersion != 4) errors.Add("配置版本不受支持，请重新填写配置。");
         if (!Enum.IsDefined(Miner) || !Enum.IsDefined(Device)) errors.Add("不支持的内核或设备模式。");
         if (Device == MiningDevice.Cpu && Miner != MinerKind.BzMiner) errors.Add("PRL 的 CPU 模式需要选择 BzMiner。");
         if (Device == MiningDevice.IntegratedGpu && Miner != MinerKind.BzMiner) errors.Add("仅核显模式需要选择 BzMiner。");

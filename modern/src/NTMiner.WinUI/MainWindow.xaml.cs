@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private bool _confirming;
     private long _sequence;
     private MiningState _state;
+    private string? _activeRunOptions;
 
     public MainWindow(string? smokeDirectory = null)
     {
@@ -70,7 +71,15 @@ public sealed partial class MainWindow : Window
                 MinerChoice.SelectedIndex = options.Miner == MinerKind.BzMiner ? 1 : 0;
                 DeviceChoice.SelectedIndex = (int)options.Device;
                 CpuThreads.Value = options.CpuThreads; BenchmarkMode.IsChecked = options.BenchmarkMode;
+                ThemeChoice.SelectedIndex = (int)options.Theme;
+                // 加载阶段不能触发自动保存，否则会把“刚读到的默认值”立刻写回文件。
+                _suppressAutoSave = true;
+                RestoreSwitches(options);   // 内部会调用 RebuildSwitches，保证复选框存在
+                _suppressAutoSave = false;
+                _lastSavedOptions = System.Text.Json.JsonSerializer.Serialize(Options());
+                AutoSaveState.Text = "配置已载入，修改后自动保存。";
                 UpdateControls();
+                UpdateCommandLinePreview();
             }
             catch (Exception ex) { Feedback("配置未加载：" + ex.Message, InfoBarSeverity.Warning); }
             await _client.ConnectAsync();
@@ -96,17 +105,29 @@ public sealed partial class MainWindow : Window
             && CpuThreads.Value >= 1 && CpuThreads.Value <= Environment.ProcessorCount ? (int)CpuThreads.Value : 0,
         DemoMode = DemoMode.IsOn, BenchmarkMode = IsBenchmark,
         AutoRecover = !IsBenchmark && AutoRecover.IsChecked == true,
-        KernelPath = KernelPath.Text.Trim(), Wallet = Wallet.Text.Trim(), Pool = Pool.Text.Trim(), Worker = Worker.Text.Trim()
+        KernelPath = KernelPath.Text.Trim(), Wallet = Wallet.Text.Trim(), Pool = Pool.Text.Trim(), Worker = Worker.Text.Trim(),
+        KernelSwitches = EnabledSwitches(),
+        Theme = (AppTheme)ThemeChoice.SelectedIndex
     };
 
-    private void ModeChanged(object sender, RoutedEventArgs e) => UpdateControls();
+    private void ModeChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        UpdateControls();
+        UpdateCommandLinePreview();
+        AutoSave();
+    }
     private void MinerSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
         if (ReferenceEquals(sender, MinerChoice) && SelectedMiner == MinerKind.SrbMiner) { DeviceChoice.SelectedIndex = 0; BenchmarkMode.IsChecked = false; }
         if (ReferenceEquals(sender, DeviceChoice) && SelectedDevice is MiningDevice.Cpu or MiningDevice.IntegratedGpu)
         { MinerChoice.SelectedIndex = 1; BenchmarkMode.IsChecked = true; }
+        // 换内核后可用参数随之变化，必须重建复选框，否则会把旧内核的参数带进启动命令。
+        if (ReferenceEquals(sender, MinerChoice)) RebuildSwitches();
         UpdateControls();
+        UpdateCommandLinePreview();
+        AutoSave();
         // 设备模式改变可能让硬件适配提示失效，重新评估一次。
         if (_hardware is not null) RenderAdvice(_hardware);
     }
@@ -117,14 +138,14 @@ public sealed partial class MainWindow : Window
         bool editable = !_busy && !_confirming && !HasActiveTask && !_closing;
         StartButton.IsEnabled = _connected && editable;
         StopButton.IsEnabled = _connected && !_busy && HasActiveTask && !_closing;
-        MinerChoice.IsEnabled = DeviceChoice.IsEnabled = DemoMode.IsEnabled = editable;
+        MinerChoice.IsEnabled = DeviceChoice.IsEnabled = editable;
         CpuOptions.Visibility = SelectedDevice == MiningDevice.Cpu ? Visibility.Visible : Visibility.Collapsed;
         CpuThreads.IsEnabled = editable && SelectedDevice == MiningDevice.Cpu;
         BenchmarkMode.IsEnabled = editable && SelectedMiner == MinerKind.BzMiner;
+        KernelPath.IsEnabled = editable && !DemoMode.IsOn;
+        Wallet.IsEnabled = Pool.IsEnabled = Worker.IsEnabled = editable;
         AutoRecover.IsEnabled = editable && !IsBenchmark;
-        RealFields.IsEnabled = !DemoMode.IsOn && editable;
         WalletFields.Visibility = IsBenchmark ? Visibility.Collapsed : Visibility.Visible;
-        SaveButton.IsEnabled = !_closing;
         StartButton.Content = DemoMode.IsOn ? "开始演示" : IsBenchmark ? "开始离线自测" : "开始挖矿";
         ModeBanner.Title = DemoMode.IsOn ? "演示模式" : IsBenchmark ? MiningDisplay.DeviceName(SelectedDevice) + " · 离线自测" : "真实矿池模式";
         ModeBanner.Severity = DemoMode.IsOn ? InfoBarSeverity.Informational : InfoBarSeverity.Warning;
@@ -152,11 +173,7 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { Feedback("文件选择失败：" + ex.Message, InfoBarSeverity.Error); }
     }
 
-    private async void SaveConfiguration(object sender, RoutedEventArgs e)
-    {
-        try { await _store.SaveAsync(Options()); Feedback("配置已保存到本机，不会自动启动挖矿。", InfoBarSeverity.Success); }
-        catch (Exception ex) { Feedback("保存失败：" + ex.Message, InfoBarSeverity.Error); }
-    }
+
 
     private async void StartClicked(object sender, RoutedEventArgs e) => await StartTaskAsync();
     private async Task StartTaskAsync()
@@ -189,6 +206,7 @@ public sealed partial class MainWindow : Window
                 if (_closing || !_connected) return;
             }
             var response = await _client.SendAsync(new("start", options, _sequence));
+            if (response.Success) RememberRunOptions(options);
             Apply(response.Snapshot);
             Feedback(response.Success ? options.BenchmarkMode ? "已请求启动离线自测，请查看日志和算力，不等待矿池份额。" : "已请求启动，等待内核状态和接受份额。" : response.Error ?? "启动失败。",
                 response.Success ? InfoBarSeverity.Informational : InfoBarSeverity.Error);
@@ -224,6 +242,7 @@ public sealed partial class MainWindow : Window
     private void Apply(MiningSnapshot snapshot)
     {
         _state = snapshot.State;
+        UpdateRestartHint();
         StateLabel.Text = MiningDisplay.StateText(snapshot, DateTimeOffset.Now);
         ProcessLabel.Text = snapshot.ProcessId is { } pid ? $"{MiningDisplay.MinerName(snapshot.Miner)} / {MiningDisplay.DeviceName(snapshot.Device)}{(snapshot.Device == MiningDevice.Cpu ? $" / {snapshot.CpuThreads} 线程" : "")} · PID {pid}" : "内核未运行";
         bool fresh = MiningDisplay.Fresh(snapshot, DateTimeOffset.Now);
@@ -284,16 +303,21 @@ public sealed partial class MainWindow : Window
         OverviewPanel.Visibility = tag == "overview" ? Visibility.Visible : Visibility.Collapsed;
         DashboardPanel.Visibility = tag == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ConfigurationPanel.Visibility = tag == "configuration" ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanel.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
         LogsPanel.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
         ModeBanner.Visibility = tag is "overview" or "configuration" or "logs" ? Visibility.Visible : Visibility.Collapsed;
-        PageHeading.Text = tag == "configuration" ? "挖矿配置" : tag == "logs" ? "运行日志" : tag == "dashboard" ? "硬件仪表盘" : "运行概览";
-        PageDescription.Text = tag == "configuration" ? "选择设备与内核，配置只保存在本机。"
+        PageHeading.Text = tag == "configuration" ? "挖矿配置" : tag == "logs" ? "运行日志"
+            : tag == "dashboard" ? "硬件仪表盘" : tag == "settings" ? "设置" : "运行概览";
+        PageDescription.Text = tag == "configuration" ? "所选内核、收款账户与内核参数；修改后立即保存。"
             : tag == "logs" ? "核对内核输出、错误与接受份额。"
             : tag == "dashboard" ? "只读检测本机硬件，用于判断哪种挖矿模式可能可行。"
+            : tag == "settings" ? "外观与运行方式，保存在本机配置。"
             : "查看任务、内核指标与运行状态。";
         if (tag == "dashboard") _ = LoadHardwareAsync();
+        if (tag == "configuration") UpdateCommandLinePreview();
     }
     private void ShowConfiguration(object sender, RoutedEventArgs args) { Navigation.SelectedItem = ConfigurationItem; ShowPage("configuration"); }
+    private void ShowSettings(object sender, RoutedEventArgs args) { Navigation.SelectedItem = SettingsItem; ShowPage("settings"); }
     private void ShowLogs(object sender, RoutedEventArgs args) { Navigation.SelectedItem = LogsItem; ShowPage("logs"); }
     private void ShowOverview(object sender, RoutedEventArgs args) { Navigation.SelectedItem = OverviewItem; ShowPage("overview"); }
     private void ShowDashboard(object sender, RoutedEventArgs args) { Navigation.SelectedItem = DashboardItem; ShowPage("dashboard"); }
@@ -301,6 +325,7 @@ public sealed partial class MainWindow : Window
     {
         if (!_ready) return;
         Root.RequestedTheme = ThemeChoice.SelectedIndex switch { 1 => ElementTheme.Light, 2 => ElementTheme.Dark, _ => ElementTheme.Default };
+        AutoSave();
     }
 
     private async void ExportLogs(object sender, RoutedEventArgs args)
