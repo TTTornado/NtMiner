@@ -66,6 +66,12 @@ function Set-BuildStamp {
 }
 
 # Runs dotnet and reports the first actionable error instead of a generic failure.
+#
+# 输出不经过任何 PowerShell 管道。把原生进程的输出重定向进变量（或 Tee-Object）会让
+# PowerShell 用 [Console]::OutputEncoding 解码字节，而该编码是本机 OEM 代码页 936，
+# dotnet 在控制台场景下却写 UTF-8，于是中文变成 "0 个错�?" 这类乱码。
+# 这里改为：正常情况让子进程直接写控制台（不捕获、不乱码）；仅失败时再启动一次同样的
+# 命令并把输出重定向到文件，用 UTF-8 读取文件来提取错误行。
 function Invoke-DotnetStep {
     param(
         [Parameter(Mandatory)][string]$DotnetPath,
@@ -73,16 +79,32 @@ function Invoke-DotnetStep {
         [Parameter(Mandatory)][string]$Description
     )
 
-    $output = & $DotnetPath @Arguments 2>&1
+    & $DotnetPath @Arguments
     $code = $LASTEXITCODE
-    $output | ForEach-Object { Write-Output $_ }
     if ($code -eq 0) { return }
 
-    $lines = @($output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match 'error|错误' })
-    if ($lines.Count -eq 0) { throw "$Description 失败（退出码 $code）。" }
-    if (($lines -join "`n") -match 'MSB3021|MSB3027|被锁定|being used by another process') {
-        throw "$Description 失败：输出文件仍被占用。请先关闭已打开的程序窗口。"
-    }
-    $first = $lines | Select-Object -First 3
-    throw "$Description 失败：`n" + ($first -join "`n")
+    # 仅失败时收集诊断信息，此时再启动一次并把输出写进文件，避免解码问题。
+    $log = Join-Path ([System.IO.Path]::GetTempPath()) ('ntminer-step-' + [guid]::NewGuid().ToString('N') + '.log')
+    try {
+        $quoted = ($Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $DotnetPath
+        $psi.Arguments = $quoted
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+        $psi.WorkingDirectory = (Get-Location).Path
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $all = $proc.StandardOutput.ReadToEnd() + $proc.StandardError.ReadToEnd()
+        $proc.WaitForExit()
+        $lines = @($all -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match 'error|错误' })
+        if ($lines.Count -eq 0) { throw "$Description 失败（退出码 $code）。" }
+        if (($lines -join "`n") -match 'MSB3021|MSB3027|被锁定|being used by another process') {
+            throw "$Description 失败：输出文件仍被占用。请先关闭已打开的程序窗口。"
+        }
+        $first = $lines | Select-Object -First 3
+        throw "$Description 失败：`n" + ($first -join "`n")
+    } finally { Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue }
 }
