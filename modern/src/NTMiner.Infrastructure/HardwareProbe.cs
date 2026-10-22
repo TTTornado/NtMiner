@@ -23,7 +23,10 @@ public static class HardwareProbe
             Probe(QueryGraphics, "显卡", problems) ?? [],
             Probe(QueryDisks, "存储", problems) ?? [],
             Probe(QueryOperatingSystem, "操作系统", problems),
-            problems.ToArray());
+            problems.ToArray(),
+            Probe(QueryMonitors, "显示器", problems) ?? [],
+            Probe(QuerySoundDevices, "声卡", problems) ?? [],
+            Probe(QueryNetworkAdapters, "网卡", problems) ?? []);
     }
 
     private static T? Probe<T>(Func<T?> query, string section, List<string> problems) where T : class
@@ -61,7 +64,7 @@ public static class HardwareProbe
 
         var modules = new List<HardwareMemoryModule>();
         using (var searcher = new ManagementObjectSearcher(CimNamespace,
-            "SELECT DeviceLocator,BankLabel,Capacity,Speed,ConfiguredClockSpeed,Manufacturer,PartNumber FROM Win32_PhysicalMemory"))
+            "SELECT DeviceLocator,BankLabel,Capacity,Speed,ConfiguredClockSpeed,Manufacturer,PartNumber,SMBIOSMemoryType FROM Win32_PhysicalMemory"))
         {
             foreach (ManagementObject item in searcher.Get())
             {
@@ -72,7 +75,8 @@ public static class HardwareProbe
                 if (speed <= 0) speed = Int(item["Speed"]);
                 modules.Add(new HardwareMemoryModule(
                     First(Text(item["DeviceLocator"]), Text(item["BankLabel"]), "未报告插槽"),
-                    capacity, speed, Text(item["Manufacturer"]), Text(item["PartNumber"])));
+                    capacity, speed, Text(item["Manufacturer"]), Text(item["PartNumber"]),
+                    Int(item["SMBIOSMemoryType"])));
             }
         }
         if (total <= 0) total = modules.Sum(m => m.CapacityBytes);
@@ -111,10 +115,14 @@ public static class HardwareProbe
         {
             var name = Text(item["Name"]);
             if (string.IsNullOrWhiteSpace(name)) continue;
+            var deviceId = Text(item["PnPDeviceId"]);
+            // ROOT\ 枚举的适配器由软件驱动提供（远程控制、投屏、虚拟显示器），
+            // 物理显卡必然挂在 PCI 总线上。这类条目在界面上没有意义，直接不返回。
+            if (deviceId.StartsWith(@"ROOT\", StringComparison.OrdinalIgnoreCase)) continue;
             var ram = Bytes(item["AdapterRAM"]);
             adapters.Add(new HardwareGraphics(name, Text(item["DriverVersion"]), CimDate(Text(item["DriverDate"])),
                 // AdapterRAM 是 32 位字段，显存大于 4 GB 时会报错值，交由界面标注，不在此处猜测。
-                ram > 0 ? ram : null, Text(item["PnPDeviceId"])));
+                ram > 0 ? ram : null, deviceId));
         }
         return adapters.ToArray();
     }
@@ -134,6 +142,56 @@ public static class HardwareProbe
         return disks.ToArray();
     }
 
+    /// <summary>
+    /// 显示器。WmiMonitorID 在部分机器（含本机实测）返回"无效类"，
+    /// 因此使用 Win32_DesktopMonitor；它不提供分辨率，尺寸留 0 由界面按"未报告"处理。
+    /// </summary>
+    private static HardwareMonitor[]? QueryMonitors()
+    {
+        var monitors = new List<HardwareMonitor>();
+        using var searcher = new ManagementObjectSearcher(CimNamespace,
+            "SELECT Name,MonitorManufacturer,ScreenWidth,ScreenHeight FROM Win32_DesktopMonitor");
+        foreach (ManagementObject item in searcher.Get())
+        {
+            var name = Text(item["Name"]);
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            monitors.Add(new HardwareMonitor(name, Text(item["MonitorManufacturer"]),
+                Int(item["ScreenWidth"]), Int(item["ScreenHeight"])));
+        }
+        return monitors.ToArray();
+    }
+
+    private static HardwareSoundDevice[]? QuerySoundDevices()
+    {
+        var devices = new List<HardwareSoundDevice>();
+        using var searcher = new ManagementObjectSearcher(CimNamespace,
+            "SELECT Name,Manufacturer,Status FROM Win32_SoundDevice");
+        foreach (ManagementObject item in searcher.Get())
+        {
+            var name = Text(item["Name"]);
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            // 只保留在用的设备：Status 非 OK 的多半是未连接的 HDMI 音频端点。
+            if (Text(item["Status"]) is { Length: > 0 } status && !status.Equals("OK", StringComparison.OrdinalIgnoreCase)) continue;
+            devices.Add(new HardwareSoundDevice(name, Text(item["Manufacturer"])));
+        }
+        return devices.ToArray();
+    }
+
+    private static HardwareNetworkAdapter[]? QueryNetworkAdapters()
+    {
+        var adapters = new List<HardwareNetworkAdapter>();
+        // PhysicalAdapter 排除 VPN、回环等纯软件适配器。
+        using var searcher = new ManagementObjectSearcher(CimNamespace,
+            "SELECT Name,NetConnectionID,Speed,NetEnabled,NetConnectionStatus FROM Win32_NetworkAdapter WHERE PhysicalAdapter=TRUE");
+        foreach (ManagementObject item in searcher.Get())
+        {
+            var name = Text(item["Name"]);
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            var enabled = item["NetEnabled"] is bool flag && flag;
+            adapters.Add(new HardwareNetworkAdapter(name, Text(item["NetConnectionID"]), Bytes(item["Speed"]), enabled));
+        }
+        return adapters.ToArray();
+    }
     private static HardwareOperatingSystem? QueryOperatingSystem()
     {
         using var searcher = new ManagementObjectSearcher(CimNamespace,

@@ -1,23 +1,30 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 
 namespace NTMiner.Modern.WinUI;
 
-/// <summary>仪表盘的显示模型。行与分区都是不可变的只读投影。</summary>
-public sealed record HardwareRow(string Label, string Value);
-public sealed record HardwareSection(string Title, HardwareRow[] Rows);
+/// <summary>仪表盘里的一行：图标、类别、摘要以及打开详情所需的键。</summary>
+public sealed record HardwareRow(string Key, string Glyph, string Title, string Value)
+{
+    /// <summary>未检测到的行标为次要色：由 DataTemplate 通过 IsMissing 决定，避免写死颜色值。</summary>
+    public bool IsMissing => Value.Contains("未检测到", StringComparison.Ordinal)
+        || Value.Contains("仅虚拟", StringComparison.Ordinal);
+}
 
 /// <summary>
 /// 硬件仪表盘：只读检测，不提升权限、不改变系统状态。
-/// 检测放在后台线程执行，避免 WMI 首次查询阻塞界面。
+/// 首页只显示每类硬件一行摘要，详细信息在点击后的弹窗中展开。
 /// </summary>
 public sealed partial class MainWindow
 {
     private HardwareSnapshot? _hardware;
     private bool _detecting;
     private Task? _detectingTask;
-    /// <summary>最近一次渲染的分区数，仅供自动化验收判断渲染是否真的执行过。</summary>
-    internal int LastRenderedSectionCount { get; private set; }
+
+    /// <summary>最近一次渲染的行数，仅供自动化验收判断渲染是否真的执行过。</summary>
+    internal int LastRenderedRowCount { get; private set; }
 
     private async Task LoadHardwareAsync()
     {
@@ -61,93 +68,23 @@ public sealed partial class MainWindow
     private void RenderHardware(HardwareSnapshot snapshot)
     {
         _hardware = snapshot;
-        var sections = new List<HardwareSection>();
-        var summary = new List<string>();
-
-        if (snapshot.Processor is { Reported: true } cpu)
+        var rows = new List<HardwareRow>
         {
-            summary.Add(cpu.Name);
-            summary.Add($"{cpu.Cores} 核 / {cpu.LogicalProcessors} 线程");
-            sections.Add(new HardwareSection("处理器", HardwareRows(
-                ("型号", cpu.Name),
-                ("物理核心 / 逻辑线程", $"{cpu.Cores} / {cpu.LogicalProcessors}"),
-                ("基准频率", cpu.BaseClockMhz > 0 ? $"{cpu.BaseClockMhz} MHz" : "未报告"),
-                ("L3 缓存", cpu.L3CacheKb > 0 ? $"{cpu.L3CacheKb / 1024.0:0.#} MB" : "未报告"))));
-        }
+            new("cpu", "\uE950", "处理器", HardwareDisplay.ProcessorSummary(snapshot.Processor)),
+            new("board", "\uE7F1", "主板", HardwareDisplay.MotherboardSummary(snapshot.Motherboard)),
+            new("memory", "\uE9D9", "内存", HardwareDisplay.MemorySummary(snapshot.Memory)),
+            new("gpu", "\uE7F4", "显卡", HardwareDisplay.GraphicsSummary(snapshot.Graphics)),
+            new("monitor", "\uE7F8", "显示器", HardwareDisplay.MonitorSummary(snapshot.Monitors)),
+            new("disk", "\uEDA2", "磁盘", HardwareDisplay.DiskSummary(snapshot.Disks)),
+            new("sound", "\uE767", "声卡", HardwareDisplay.SoundSummary(snapshot.SoundDevices)),
+            new("network", "\uE968", "网卡", HardwareDisplay.NetworkSummary(snapshot.NetworkAdapters))
+        };
+        HardwareList.ItemsSource = rows;
+        LastRenderedRowCount = rows.Count;
 
-        if (snapshot.Memory is { } memory)
-        {
-            summary.Add($"内存 {HardwareDisplay.FormatBytes(memory.TotalBytes)}");
-            var rows = new List<HardwareRow>
-            {
-                new("物理内存总量", HardwareDisplay.FormatBytes(memory.TotalBytes)),
-                new("已识别内存条", memory.Modules.Length == 0 ? "系统未报告模块信息" : $"{memory.Modules.Length} 条，合计 {HardwareDisplay.FormatBytes(memory.InstalledBytes)}")
-            };
-            for (var i = 0; i < memory.Modules.Length; i++)
-            {
-                var module = memory.Modules[i];
-                var detail = $"{HardwareDisplay.FormatBytes(module.CapacityBytes)}"
-                    + (module.SpeedMhz > 0 ? $" · {module.SpeedMhz} MT/s" : "")
-                    + (string.IsNullOrWhiteSpace(module.Manufacturer) ? "" : $" · {module.Manufacturer}")
-                    + (string.IsNullOrWhiteSpace(module.PartNumber) ? "" : $" · {module.PartNumber}");
-                rows.Add(new HardwareRow($"插槽 {i + 1}（{module.Slot}）", detail));
-            }
-            rows.Add(new HardwareRow("当前可用", snapshot.OperatingSystem is { } os ? $"{os.AvailableMemoryMb} MB" : "见操作系统一栏"));
-            sections.Add(new HardwareSection("内存", rows.ToArray()));
-        }
-
-        if (snapshot.Motherboard is { } board)
-        {
-            if (!string.IsNullOrWhiteSpace(board.Product)) summary.Add(board.Product);
-            sections.Add(new HardwareSection("主板与固件", HardwareRows(
-                ("主板", Join(board.Manufacturer, board.Product)),
-                ("BIOS 版本", Blank(board.BiosVersion)),
-                ("BIOS 日期", Blank(board.BiosDate)))));
-        }
-
-        if (snapshot.Graphics.Length > 0)
-        {
-            var mineable = HardwareDisplay.Mineable(snapshot.Graphics);
-            if (mineable.Length > 0) summary.Add($"{mineable.Length} 个物理显卡");
-            var rows = new List<HardwareRow>();
-            for (var i = 0; i < snapshot.Graphics.Length; i++)
-            {
-                var adapter = snapshot.Graphics[i];
-                var index = i + 1;
-                rows.Add(new HardwareRow($"显卡 {index} · 型号", adapter.Name));
-                rows.Add(new HardwareRow($"显卡 {index} · 角色", HardwareDisplay.AdapterRole(adapter)));
-                rows.Add(new HardwareRow($"显卡 {index} · 驱动", Join(adapter.DriverVersion, adapter.DriverDate)));
-                // AdapterRAM 是 32 位字段，达到 4 GB 附近时数值不可信，如实标注而不是当作真实显存。
-                var ramStated = adapter.AdapterRamBytes is { } bytes
-                    ? HardwareDisplay.FormatBytes(bytes) + (bytes >= 4_000_000_000 ? "（WMI 字段上限，实际显存可能更大）" : "")
-                    : "未报告";
-                rows.Add(new HardwareRow($"显卡 {index} · 显存", ramStated));
-                if (adapter.IsVirtual) rows.Add(new HardwareRow($"显卡 {index} · 说明", "由软件驱动提供的显示适配器，挖矿内核不会把它当作可用 GPU。"));
-            }
-            sections.Add(new HardwareSection("显卡", rows.ToArray()));
-        }
-
-        if (snapshot.Disks.Length > 0)
-            sections.Add(new HardwareSection("存储", snapshot.Disks
-                .Select((disk, i) => (Label: $"磁盘 {i + 1}", Value: $"{disk.Model} · {HardwareDisplay.FormatBytes(disk.SizeBytes)}"
-                    + (string.IsNullOrWhiteSpace(disk.InterfaceType) ? "" : $" · {disk.InterfaceType}")
-                    + (disk.IsRemovable ? " · 可移动" : "")))
-                .Select(x => new HardwareRow(x.Label, x.Value)).ToArray()));
-
-        if (snapshot.OperatingSystem is { } system)
-        {
-            summary.Add($"{system.Caption}（{system.BuildNumber}）");
-            sections.Add(new HardwareSection("操作系统", HardwareRows(
-                ("版本", Join(system.Caption, system.Version)),
-                ("内部版本号", system.BuildNumber == 0 ? "未报告" : system.BuildNumber.ToString()),
-                ("体系结构", Blank(system.Architecture)),
-                ("当前可用物理内存", $"{system.AvailableMemoryMb} MB"))));
-        }
-
-        HardwareSections.ItemsSource = sections;
-        LastRenderedSectionCount = sections.Count;
-        // 用不换行空格连接词组内部，避免“1 个物理显卡”在窄窗口被拆开。
-        HardwareSummary.Text = $"{string.Join("　·　", summary)}　·　检测于 {snapshot.CapturedAt:HH:mm:ss}";
+        var detected = rows.Count(r => !r.Value.Contains("未检测到", StringComparison.Ordinal));
+        HardwareSummary.Text = $"已识别 {detected} 类设备　·　检测于 {snapshot.CapturedAt:HH:mm:ss}"
+            + (snapshot.OperatingSystem is { } os ? $"　·　{os.Caption}（{os.BuildNumber}）· 可用内存 {os.AvailableMemoryMb} MB" : "");
 
         HardwareProblems.Message = string.Join("\n", snapshot.Problems);
         HardwareProblems.IsOpen = snapshot.Problems.Length > 0;
@@ -161,7 +98,7 @@ public sealed partial class MainWindow
         var integratedSupported = HardwareDisplay.SupportsIntegratedOnly(graphics);
         var mineable = HardwareDisplay.Mineable(graphics);
         string message;
-        InfoBarSeverity severity = InfoBarSeverity.Informational;
+        var severity = InfoBarSeverity.Informational;
 
         if (integratedSupported is null && mineable.Length == 0)
             message = "未检测到任何物理显卡。CPU 模式仍可用；GPU 相关模式需要内核自行识别设备。";
@@ -188,12 +125,137 @@ public sealed partial class MainWindow
         HardwareAdvice.IsOpen = true;
     }
 
-    private static HardwareRow[] HardwareRows(params (string Label, string Value)[] rows) =>
-        rows.Select(r => new HardwareRow(r.Label, r.Value)).ToArray();
+    private async void HardwareRowClicked(object sender, ItemClickEventArgs e)
+    {
+        if (_hardware is not { } snapshot || e.ClickedItem is not HardwareRow row) return;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = row.Title,
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Close,
+            Content = BuildDetail(row.Key, snapshot)
+        };
+        await dialog.ShowAsync();
+    }
 
-    private static string Join(string first, string second) =>
-        string.IsNullOrWhiteSpace(first) ? Blank(second)
-        : string.IsNullOrWhiteSpace(second) ? first : $"{first} · {second}";
+    /// <summary>详情弹窗：按类别列出该硬件的全部字段；未知字段标为"未报告"而不是省略。</summary>
+    private static UIElement BuildDetail(string key, HardwareSnapshot snapshot)
+    {
+        var lines = new List<(string Label, string Value)>();
+        switch (key)
+        {
+            case "cpu" when snapshot.Processor is { } cpu:
+                lines.Add(("型号", cpu.Name));
+                lines.Add(("物理核心", cpu.Cores > 0 ? cpu.Cores.ToString() : "未报告"));
+                lines.Add(("逻辑线程", cpu.LogicalProcessors > 0 ? cpu.LogicalProcessors.ToString() : "未报告"));
+                lines.Add(("基准频率", cpu.BaseClockMhz > 0 ? cpu.BaseClockMhz + " MHz" : "未报告"));
+                lines.Add(("L3 缓存", cpu.L3CacheKb > 0 ? $"{cpu.L3CacheKb / 1024.0:0.#} MB" : "未报告"));
+                break;
+            case "memory" when snapshot.Memory is { } memory:
+                lines.Add(("安装总量", HardwareDisplay.FormatGiB(memory.InstalledBytes)));
+                lines.Add(("可寻址总量", HardwareDisplay.FormatBytes(memory.TotalBytes)));
+                lines.Add(("内存条数量", memory.Modules.Length.ToString()));
+                for (var i = 0; i < memory.Modules.Length; i++)
+                {
+                    var m = memory.Modules[i];
+                    var detail = string.Join(" · ", new[]
+                    {
+                        HardwareDisplay.FormatGiB(m.CapacityBytes),
+                        m.MemoryType,
+                        m.SpeedMhz > 0 ? m.SpeedMhz + " MHz" : "",
+                        m.Manufacturer.Trim(),
+                        m.PartNumber.Trim()
+                    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                    lines.Add(($"插槽 {i + 1}（{m.Slot}）", detail));
+                }
+                if (snapshot.OperatingSystem is { } memOs) lines.Add(("当前可用", memOs.AvailableMemoryMb + " MB"));
+                break;
+            case "board" when snapshot.Motherboard is { } board:
+                lines.Add(("厂商", Blank(board.Manufacturer)));
+                lines.Add(("型号", Blank(board.Product)));
+                lines.Add(("BIOS 版本", Blank(board.BiosVersion)));
+                lines.Add(("BIOS 日期", Blank(board.BiosDate)));
+                break;
+            case "gpu":
+                if (snapshot.Graphics.Length == 0) lines.Add(("设备", "未检测到"));
+                for (var i = 0; i < snapshot.Graphics.Length; i++)
+                {
+                    var g = snapshot.Graphics[i];
+                    var index = i + 1;
+                    lines.Add(($"显卡 {index}", g.Name));
+                    lines.Add(($"显卡 {index} 类型", HardwareDisplay.AdapterRole(g)));
+                    lines.Add(($"显卡 {index} 驱动", Blank(string.Join(" · ", new[] { g.DriverVersion, g.DriverDate }.Where(s => !string.IsNullOrWhiteSpace(s))))));
+                    // AdapterRAM 是 32 位字段，接近 4 GB 时数值不可信。
+                    lines.Add(($"显卡 {index} 显存", g.AdapterRamBytes is { } ram
+                        ? HardwareDisplay.FormatBytes(ram) + (ram >= 4_000_000_000 ? "（WMI 字段上限，实际可能更大）" : "")
+                        : "未报告"));
+                    lines.Add(($"显卡 {index} 设备 ID", Blank(g.PnpDeviceId)));
+                }
+                break;
+            case "monitor":
+                if (snapshot.Monitors.Length == 0) lines.Add(("设备", "未检测到"));
+                for (var i = 0; i < snapshot.Monitors.Length; i++)
+                {
+                    var m = snapshot.Monitors[i];
+                    lines.Add(($"显示器 {i + 1}", m.Name));
+                    lines.Add(($"显示器 {i + 1} 厂商", Blank(m.Manufacturer)));
+                    lines.Add(($"显示器 {i + 1} 分辨率", m.Width > 0 && m.Height > 0 ? $"{m.Width} × {m.Height}" : "WMI 未报告"));
+                }
+                break;
+            case "disk":
+                if (snapshot.Disks.Length == 0) lines.Add(("设备", "未检测到"));
+                for (var i = 0; i < snapshot.Disks.Length; i++)
+                {
+                    var d = snapshot.Disks[i];
+                    lines.Add(($"磁盘 {i + 1}", d.Model));
+                    lines.Add(($"磁盘 {i + 1} 容量", HardwareDisplay.FormatBytes(d.SizeBytes)));
+                    lines.Add(($"磁盘 {i + 1} 接口", Blank(d.InterfaceType)));
+                    if (d.IsRemovable) lines.Add(($"磁盘 {i + 1} 类型", "可移动设备"));
+                }
+                break;
+            case "sound":
+                if (snapshot.SoundDevices.Length == 0) lines.Add(("设备", "未检测到"));
+                for (var i = 0; i < snapshot.SoundDevices.Length; i++)
+                {
+                    lines.Add(($"声卡 {i + 1}", snapshot.SoundDevices[i].Name));
+                    lines.Add(($"声卡 {i + 1} 厂商", Blank(snapshot.SoundDevices[i].Manufacturer)));
+                }
+                break;
+            case "network":
+                if (snapshot.NetworkAdapters.Length == 0) lines.Add(("设备", "未检测到"));
+                for (var i = 0; i < snapshot.NetworkAdapters.Length; i++)
+                {
+                    var n = snapshot.NetworkAdapters[i];
+                    lines.Add(($"网卡 {i + 1}", n.Name));
+                    lines.Add(($"网卡 {i + 1} 连接名", Blank(n.ConnectionName)));
+                    lines.Add(($"网卡 {i + 1} 速率", n.LinkSpeed));
+                    lines.Add(($"网卡 {i + 1} 状态", n.IsEnabled ? "已启用" : "已禁用"));
+                }
+                break;
+            default:
+                lines.Add(("说明", "该硬件的详细信息暂不可用。"));
+                break;
+        }
+
+        var panel = new StackPanel { Spacing = 10, MinWidth = 420 };
+        foreach (var (label, value) in lines)
+        {
+            var grid = new Grid { ColumnSpacing = 16 };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.Children.Add(new TextBlock
+            {
+                Text = label, FontSize = 13, TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            });
+            var box = new TextBlock { Text = value, FontSize = 13, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
+            Grid.SetColumn(box, 1);
+            grid.Children.Add(box);
+            panel.Children.Add(grid);
+        }
+        return new ScrollViewer { Content = panel, MaxHeight = 460, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    }
 
     private static string Blank(string value) => string.IsNullOrWhiteSpace(value) ? "未报告" : value;
 }

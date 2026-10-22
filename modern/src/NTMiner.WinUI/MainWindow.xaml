@@ -67,8 +67,8 @@
        </Border>
       </StackPanel>
      </ScrollViewer>
-     <ScrollViewer x:Name="DashboardPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="16">
+     <ScrollViewer x:Name="DashboardPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="12" VerticalAlignment="Top">
        <Border Style="{StaticResource Card}">
         <Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
          <StackPanel Spacing="6">
@@ -80,28 +80,34 @@
        </Border>
        <InfoBar x:Name="HardwareProblems" IsOpen="False" IsClosable="False" Severity="Warning" Title="部分硬件信息不可用" />
        <InfoBar x:Name="HardwareAdvice" IsOpen="False" IsClosable="False" Severity="Informational" Title="硬件与挖矿模式" />
-       <ItemsControl x:Name="HardwareSections">
-        <ItemsControl.ItemTemplate>
-         <DataTemplate>
-          <Border Style="{StaticResource Card}" Margin="0,0,0,16">
-           <StackPanel Spacing="10">
-            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
-            <ItemsControl ItemsSource="{Binding Rows}">
-             <ItemsControl.ItemTemplate>
-              <DataTemplate>
-               <Grid ColumnSpacing="16" Padding="0,4">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding Label}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="13" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-               </Grid>
-              </DataTemplate>
-             </ItemsControl.ItemTemplate>
-            </ItemsControl>
-           </StackPanel>
-          </Border>
-         </DataTemplate>
-        </ItemsControl.ItemTemplate>
-       </ItemsControl>
+       <Border Style="{StaticResource Card}">
+        <StackPanel Spacing="0">
+         <TextBlock Text="点击任意一行查看详细信息" FontSize="12" Margin="0,0,0,4" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+         <ListView x:Name="HardwareList" SelectionMode="None" IsItemClickEnabled="True" ItemClick="HardwareRowClicked" MaxHeight="420" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                   Background="Transparent" Padding="0" Margin="-12,0">
+          <ListView.ItemContainerStyle>
+           <Style TargetType="ListViewItem">
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+           </Style>
+          </ListView.ItemContainerStyle>
+          <ListView.ItemTemplate>
+           <DataTemplate>
+            <Grid ColumnSpacing="14" Padding="0,2" VerticalAlignment="Center">
+             <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <FontIcon Glyph="{Binding Glyph}" FontSize="15" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+              <TextBlock Text="{Binding Title}" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+             </StackPanel>
+             <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="14" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{Binding IsMissing, Converter={StaticResource MissingBrush}}" />
+             <FontIcon Grid.Column="2" Glyph="&#xE76C;" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </Grid>
+           </DataTemplate>
+          </ListView.ItemTemplate>
+         </ListView>
+        </StackPanel>
+       </Border>
       </StackPanel>
      </ScrollViewer>
      <ScrollViewer x:Name="ConfigurationPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
