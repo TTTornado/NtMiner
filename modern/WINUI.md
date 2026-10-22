@@ -1,6 +1,6 @@
 # WinUI 3 工作台
 
-Preview 0.4 提供独立原生前端、核显选择与 GPU 离线自测。双击 `Start-WinUI.cmd` 启动；首次默认演示模式，不会自动开挖。原来的 `Start.cmd` 继续启动 WPF。
+Preview 0.4 提供原生前端、核显选择与 GPU 离线自测。双击 `Start-WinUI.cmd` 启动；首次默认演示模式，不会自动开挖。WinUI 是唯一桌面前端，原 WPF 前端已移除。
 
 ## 使用
 
@@ -19,7 +19,7 @@ Preview 0.4 提供独立原生前端、核显选择与 GPU 离线自测。双击
 
 概览显示内核报告的设备名。零算力或尚无算力不视为成功，过期 30 秒的算力隐藏；内存不足时显示所需与可用系统内存，停止且不重试。演示设备始终标注模拟性质。配置格式升级为 v3，v1/v2 读取迁移不自动覆盖原文件。
 
-WinUI 和 WPF 共用 `%LOCALAPPDATA%\NtMiner.Modern\profile.json`，配置需要点击保存；主题选择仅在当前窗口有效。同一用户一次只能运行一个前端，切换前先关闭另一个。关闭窗口会停止后台与内核。
+配置存储在 `%LOCALAPPDATA%\NtMiner.Modern\profile.json`，需要点击保存；主题选择仅在当前窗口有效。同一用户一次只能运行一个窗口。关闭窗口会停止后台与内核。
 
 ## 独立构建
 
@@ -33,7 +33,7 @@ WinUI 和 WPF 共用 `%LOCALAPPDATA%\NtMiner.Modern\profile.json`，配置需要
 
 测试也可双击 `Test-WinUI.cmd`。测试会短暂打开实际窗口，只运行模拟内核，不执行真实 CPU/GPU 挖矿。
 
-WinUI 项目为 `src/NTMiner.WinUI/NTMiner.WinUI.csproj`，不加入原有 `NTMiner.Modern.sln`，因此 WPF 和后台仍可通过 `Build.ps1` 独立构建。WinUI 引用现有 Infrastructure，并复制 Agent 和演示内核输出；界面通过相同命名管道调用 Agent，不直接启动真实内核。
+WinUI 项目为 `src/NTMiner.WinUI/NTMiner.WinUI.csproj`，不加入 `NTMiner.Modern.sln`，因此后台仍可通过 `Build.ps1` 独立构建。WinUI 引用现有 Infrastructure，并复制 Agent 和演示内核输出；界面通过相同命名管道调用 Agent，不直接启动真实内核。
 
 首次 WinUI 构建需要联网还原微软 NuGet 包。包源限定为 `WinUI.NuGet.Config` 中的 nuget.org，依赖版本与哈希记录在 `packages.lock.json`，启动脚本启用锁定还原。当前工作区缓存位于 `D:\重构NTMiner\.tools\nuget-packages`。
 

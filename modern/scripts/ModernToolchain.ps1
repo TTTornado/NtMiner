@@ -21,7 +21,7 @@ function Initialize-ModernToolchain {
 # Running NtMiner processes hold the build output open, which makes MSBuild fail with
 # MSB3021/MSB3027 instead of overwriting the DLLs.
 function Get-ModernRunningProcesses {
-    return @(Get-Process -Name 'NTMiner.WinUI', 'NTMiner.Agent', 'NTMiner.FakeMiner', 'NTMiner.Desktop' -ErrorAction SilentlyContinue)
+    return @(Get-Process -Name 'NTMiner.WinUI', 'NTMiner.Agent', 'NTMiner.FakeMiner' -ErrorAction SilentlyContinue)
 }
 
 # Reports the condition and exits non-zero: callers show a readable message rather than a

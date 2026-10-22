@@ -2,6 +2,16 @@
 
 日期：2026-10-21。环境：Windows x64，便携 .NET SDK 10.0.402。
 
+## 0.4 移除 WPF 前端（2026-10-22）
+
+确认 WinUI 为唯一桌面前端后，移除 WPF 工作台及其专属验收，精简验证流程。
+
+删除范围：`src/NTMiner.Desktop`（6 个源文件）、`tests/NTMiner.UiTests`、`Start.cmd`，以及解决方案中的两个项目条目（28 行）。`Build.ps1` 不再包含界面逻辑：`-Action Test` 只跑后台验收，`-Action Run` 转发到 `BuildWinUI.ps1`，避免出现第二个启动入口。`Test.cmd` 改为后台验收入口，`Test-WinUI.cmd` 承担界面验收。`ModernToolchain.ps1` 的进程占用检测同时去掉 `NTMiner.Desktop`。
+
+保持不变：`NTMiner.Domain`、`Application`、`Infrastructure`、`Agent` 与 `FakeMiner` 均不依赖 WPF 工程，删除后无需改动。后台验收 35 项、WinUI 24 项在删除后重新执行并全部通过，0 警告 0 错误；`-Action Run` 转发后能正常拉起 WinUI 进程。
+
+本文档下方早于本次的记录保留了当时"WPF 界面验收通过"等原始表述，不再据此判断当前状态——当前验证流程不再包含 WPF。
+
 ## 0.4 侧边栏收起时的布局修复（2026-10-22）
 
 用户反馈"挖矿配置页在侧边栏收回时显示不正常"，随后指出修复后"内容宽度变成固定的，不像其他页面一样适配窗口"。加截图验收项后确认问题并修复：

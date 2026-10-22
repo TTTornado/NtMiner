@@ -1,16 +1,16 @@
 # NtMiner PRL Preview 0.4
 
-Windows 桌面原型，基于 NtMiner 项目逐步重构。使用 .NET 10，提供独立 WinUI 3 和 WPF 前端，共用配置、后台与内核适配。与根目录的旧版 `NTMiner.sln` 隔离，不加载旧版程序集或云端配置。
+Windows 桌面原型，基于 NtMiner 项目逐步重构。使用 .NET 10，前端为 WinUI 3，共用配置、后台与内核适配。与根目录的旧版 `NTMiner.sln` 隔离，不加载旧版程序集或云端配置。
 
 ## 启动
 
-双击 `Start-WinUI.cmd` 打开新的 WinUI 3 工作台，或使用 `Start.cmd` 打开 WPF 工作台。两个入口都会先检查源码是否比上次构建新：**没有改动就直接启动**（约 1–2 秒），改动过才做一次增量构建。构建前会检查是否已有程序在运行——程序开着时输出文件被占用，此时会直接提示关闭窗口，而不是抛出构建错误。需要显式重建时使用 `Build-WinUI.cmd` / `Build.cmd`，或给脚本加 `-Force`。两个入口都不会自动开始挖矿；同一 Windows 用户一次只能打开一个现代版窗口。WinUI 使用说明与独立构建方法见 [WINUI.md](WINUI.md)。
+双击 `Start-WinUI.cmd` 打开 WinUI 3 工作台。该入口会先检查源码是否比上次构建新：**没有改动就直接启动**（约 1–2 秒），改动过才做一次增量构建。构建前会检查是否已有程序在运行——程序开着时输出文件被占用，此时会直接提示关闭窗口，而不是抛出构建错误。需要显式重建时使用 `Build-WinUI.cmd` / `Build.cmd`，或给脚本加 `-Force`。入口不会自动开始挖矿；同一 Windows 用户一次只能打开一个现代版窗口。WinUI 使用说明与独立构建方法见 [WINUI.md](WINUI.md)。
 
 判断依据是 `artifacts\.build\` 下的构建标记，而不是可执行文件的时间戳：MSBuild 在输出与上次完全相同时会保留原文件，可执行文件时间戳因此不可靠。
 
 脚本以 **UTF-8 with BOM** 保存。Windows PowerShell 5.1 会把无 BOM 的脚本按 ANSI 读取，中文字符串会破坏解析。
 
-开发环境需要 Windows 和 .NET 10 SDK。当前工作区已在 `D:\重构NTMiner\.tools\dotnet` 安装便携 SDK 10.0.402；启动脚本会优先使用这份 SDK，不修改系统 PATH。在其他电脑上可从微软官方获取 .NET 10 SDK：https://dotnet.microsoft.com/download/dotnet/10.0 。WPF 和后台构建不需要第三方 NuGet 包，`NuGet.Config` 使用空包源。WinUI 独立项目从 `WinUI.NuGet.Config` 获取微软官方依赖，锁定 Windows App SDK 2.5.1。
+开发环境需要 Windows 和 .NET 10 SDK。当前工作区已在 `D:\重构NTMiner\.tools\dotnet` 安装便携 SDK 10.0.402；启动脚本会优先使用这份 SDK，不修改系统 PATH。在其他电脑上可从微软官方获取 .NET 10 SDK：https://dotnet.microsoft.com/download/dotnet/10.0 。后台构建不需要第三方 NuGet 包，`NuGet.Config` 指向工作区本地包缓存。WinUI 独立项目从 `WinUI.NuGet.Config` 获取微软官方依赖，锁定 Windows App SDK 2.5.1。
 
 ## 先体验演示模式
 
@@ -22,7 +22,7 @@ Windows 桌面原型，基于 NtMiner 项目逐步重构。使用 .NET 10，提�
 
 1. 打开工作台，设备选择 **CPU**，界面会自动切换为 **BzMiner**；默认 1 个线程。
 2. 勾选 **离线自测**，取消 **演示模式**。
-3. 选择官方 `bzminer.exe`，点击 **开始离线自测** 并确认（WPF 的 CPU 模式按钮仍为“开始 CPU 自测”）。此时运行真实 PRL CPU 算法，不需要钱包或矿池，不产生收益；完成后点击停止。
+3. 选择官方 `bzminer.exe`，点击 **开始离线自测** 并确认。此时运行真实 PRL CPU 算法，不需要钱包或矿池，不产生收益；完成后点击停止。
 4. 若要验证矿池份额，停止后取消 **离线自测**，填入你的 PRL 地址和支持 CPU 的矿池，再启动。
 
 当前工作区已从官方发布页下载并校验 **BzMiner v100.46**，内核路径为：
@@ -86,7 +86,7 @@ WinUI 的 **硬件仪表盘**页只读检测本机硬件：处理器核心与频
 
 **探测由后台 Agent 执行。** WinUI 3 运行在 `Microsoft.NETCore.App` 上，`System.Management` 在该宿主会抛 `PlatformNotSupportedException`（该包只认可 `Microsoft.WindowsDesktop.App` 桌面框架），因此前端通过命名管道新增的 `hardware` 命令向 Agent 取值。仪表盘需要 Agent 已连接；后端未连接时页面会说明而不是显示错误数据。
 
-配置存储在 `%LOCALAPPDATA%\NtMiner.Modern\profile.json`。只存收款地址等挖矿配置，不应输入私钥或助记词；不自动导入旧 NtMiner 配置。当前格式为 v3；现代版 v1 迁移后保留 SRBMiner/GPU 原有行为，v2 迁移保留 CPU/GPU 与自测选择，仅显式保存后写入 v3。未知版本拒绝读取且不会被自动覆盖。WPF 同步识别核显模式，切换前端不会扩大设备范围。
+配置存储在 `%LOCALAPPDATA%\NtMiner.Modern\profile.json`。只存收款地址等挖矿配置，不应输入私钥或助记词；不自动导入旧 NtMiner 配置。当前格式为 v3；现代版 v1 迁移后保留 SRBMiner/GPU 原有行为，v2 迁移保留 CPU/GPU 与自测选择，仅显式保存后写入 v3。未知版本拒绝读取且不会被自动覆盖。
 
 ## 工程与验证
 
@@ -101,7 +101,7 @@ WinUI 的 **硬件仪表盘**页只读检测本机硬件：处理器核心与频
 
 包来源限定为工作区内的 `.tools\nuget-packages`（`NuGet.Config` 指向该目录），因此常规构建不访问网络。WinUI 独立项目仍从 `WinUI.NuGet.Config` 还原并锁定版本。
 
-也可双击 `Test.cmd`。测试使用控制台验收程序，不依赖测试框架包；进程/IPC 验证需要正常 Windows 用户环境，受限沙箱可能禁止命名管道和文件替换。WPF 验收会短暂打开测试窗口，并将初始和演示截图写入 `artifacts/ui/`。
+也可双击 `Test.cmd`（后台验收）或 `Test-WinUI.cmd`（WinUI 界面验收）。测试使用控制台验收程序，不依赖测试框架包；进程/IPC 验证需要正常 Windows 用户环境，受限沙箱可能禁止命名管道和文件替换。WinUI 验收会短暂打开测试窗口，截图写入 `artifacts/winui/`。
 
 | 工程 | 职责 |
 |---|---|
@@ -109,11 +109,9 @@ WinUI 的 **硬件仪表盘**页只读检测本机硬件：处理器核心与频
 | NTMiner.Application | 适配器契约、单任务生命周期与重试；状态机与会话协调分离，目标 net10.0 |
 | NTMiner.Infrastructure | Windows Job、SRBMiner 参数/日志、配置文件、本机通信与只读硬件探测 |
 | NTMiner.Agent | 后台命令处理和连接租约，并持有硬件探测（WMI 在这里可用） |
-| NTMiner.Desktop | WPF 工作台及用户操作（当前冻结，新功能只进 WinUI） |
-| NTMiner.WinUI | WinUI 3 主前端：导航、主题、本机控制与硬件仪表盘，单独构建 |
+| NTMiner.WinUI | 唯一前端（WinUI 3）：导航、主题、本机控制与硬件仪表盘，单独构建 |
 | NTMiner.FakeMiner | 自建演示内核，不连接网络 |
 | NTMiner.Tests | 配置、解析、进程与 IPC 验收 |
-| NTMiner.UiTests | WPF 演示启停、配置校验及布局截图 |
 | NTMiner.CpuProbe | 显式启用的 30 秒、单线程 BzMiner 离线硬件验证，不在常规测试中执行 |
 
 CPU 硬件验证工具只在手动调用时执行：
