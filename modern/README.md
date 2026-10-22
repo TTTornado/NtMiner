@@ -4,7 +4,11 @@ Windows 桌面原型，基于 NtMiner 项目逐步重构。使用 .NET 10，提�
 
 ## 启动
 
-双击本目录 `Start-WinUI.cmd` 打开新的 WinUI 3 工作台，或使用 `Start.cmd` 打开 WPF 工作台。两个入口都会先编译，不会自动开始挖矿；同一 Windows 用户一次只能打开一个现代版窗口。WinUI 使用说明与独立构建方法见 [WINUI.md](WINUI.md)。
+双击 `Start-WinUI.cmd` 打开新的 WinUI 3 工作台，或使用 `Start.cmd` 打开 WPF 工作台。两个入口都会先检查源码是否比上次构建新：**没有改动就直接启动**（约 1–2 秒），改动过才做一次增量构建。构建前会检查是否已有程序在运行——程序开着时输出文件被占用，此时会直接提示关闭窗口，而不是抛出构建错误。需要显式重建时使用 `Build-WinUI.cmd` / `Build.cmd`，或给脚本加 `-Force`。两个入口都不会自动开始挖矿；同一 Windows 用户一次只能打开一个现代版窗口。WinUI 使用说明与独立构建方法见 [WINUI.md](WINUI.md)。
+
+判断依据是 `artifacts\.build\` 下的构建标记，而不是可执行文件的时间戳：MSBuild 在输出与上次完全相同时会保留原文件，可执行文件时间戳因此不可靠。
+
+脚本以 **UTF-8 with BOM** 保存。Windows PowerShell 5.1 会把无 BOM 的脚本按 ANSI 读取，中文字符串会破坏解析。
 
 开发环境需要 Windows 和 .NET 10 SDK。当前工作区已在 `D:\重构NTMiner\.tools\dotnet` 安装便携 SDK 10.0.402；启动脚本会优先使用这份 SDK，不修改系统 PATH。在其他电脑上可从微软官方获取 .NET 10 SDK：https://dotnet.microsoft.com/download/dotnet/10.0 。WPF 和后台构建不需要第三方 NuGet 包，`NuGet.Config` 使用空包源。WinUI 独立项目从 `WinUI.NuGet.Config` 获取微软官方依赖，锁定 Windows App SDK 2.5.1。
 
