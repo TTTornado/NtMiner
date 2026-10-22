@@ -448,6 +448,53 @@ await Test("abrupt client exit terminates the miner via job handles", async () =
     }
 });
 
+await Test("hardware adapter classification separates virtual, integrated and dedicated", () =>
+{
+    // 虚拟显示适配器（远程桌面/投屏类）必须排除在可挖矿设备之外。
+    var virtualByName = new HardwareGraphics("Todesk Virtual Display Adapter", "1.0", "", null, @"ROOT\DISPLAY\0000");
+    Check(virtualByName.IsVirtual, "Remote-control virtual display must be flagged");
+    Check(!virtualByName.IsIntegrated, "A virtual adapter is never an integrated GPU");
+    var virtualByPnp = new HardwareGraphics("Some Card", "1.0", "", null, @"ROOT\DISPLAY\0001");
+    Check(virtualByPnp.IsVirtual, "ROOT enumerated adapters are software adapters");
+    var rdp = new HardwareGraphics("Microsoft Basic Display Adapter", "1.0", "", null, @"PCI\VEN_1234");
+    Check(rdp.IsVirtual, "Microsoft Basic Display Adapter is not usable for mining");
+
+    var integrated = new HardwareGraphics("Intel(R) UHD Graphics 730", "32.0", "", 2_147_479_552, @"PCI\VEN_8086&DEV_4682");
+    Check(!integrated.IsVirtual && integrated.IsIntegrated, "Intel UHD is a physical integrated GPU");
+    var amdApu = new HardwareGraphics("AMD Radeon(TM) Graphics", "1.0", "", null, @"PCI\VEN_1002");
+    Check(amdApu.IsIntegrated, "Radeon(TM) Graphics is the APU naming used by AMD");
+
+    // 关键回归：独显名称包含 "Radeon" 时不能被当成核显。
+    var dedicated = new HardwareGraphics("AMD Radeon RX 7600 XT", "1.0", "", null, @"PCI\VEN_1002");
+    Check(!dedicated.IsIntegrated, "A discrete Radeon must not be classified as integrated");
+    var nvidia = new HardwareGraphics("NVIDIA GeForce RTX 4070", "1.0", "", null, @"PCI\VEN_10DE");
+    Check(!nvidia.IsIntegrated && !nvidia.IsVirtual, "NVIDIA GeForce is a discrete GPU");
+
+    var all = new[] { virtualByName, integrated, dedicated };
+    Check(HardwareDisplay.Mineable(all).Length == 2, "Only physical adapters count as mineable");
+    Check(HardwareDisplay.SupportsIntegratedOnly([virtualByName]) == false, "Virtual-only host does not support igpu mode");
+    Check(HardwareDisplay.SupportsIntegratedOnly([integrated]) == true, "Intel UHD host supports igpu mode");
+    Check(HardwareDisplay.SupportsIntegratedOnly([dedicated]) == false, "Discrete-only host does not support igpu mode");
+    Check(HardwareDisplay.SupportsIntegratedOnly([]) is null, "Unknown hardware makes no claim");
+    Check(HardwareDisplay.FormatBytes(0) == "—", "Missing size is shown as unknown, never as 0 B");
+    Check(HardwareDisplay.FormatBytes(17_179_869_184) == "16 GB", "Memory is shown in binary units");
+    return Task.CompletedTask;
+});
+await Test("hardware probe reports this machine without throwing", () =>
+{
+    var snapshot = HardwareProbe.Capture();
+    Check(snapshot.CapturedAt != default, "Captured time is set");
+    // 探测允许分区缺失（部分虚拟化环境限制 WMI），但不允许把异常抛给调用方。
+    Check(snapshot.Processor is null || snapshot.Processor.Reported, "Processor block is either absent or reported");
+    if (snapshot.Processor is { } cpu)
+        Check(cpu.Cores > 0 && cpu.LogicalProcessors >= cpu.Cores, "Core counts are consistent");
+    if (snapshot.Memory is { } memory)
+        Check(memory.TotalBytes > 0, "Total memory is positive");
+    foreach (var graphics in snapshot.Graphics)
+        Check(!string.IsNullOrWhiteSpace(graphics.Name), "Every adapter has a name");
+    return Task.CompletedTask;
+});
+
 Console.WriteLine($"\n{passed} passed; {failures} failed. No real miner was downloaded or started.");
 return failures == 0 ? 0 : 1;
 

@@ -18,6 +18,7 @@
    </NavigationView.PaneHeader>
    <NavigationView.MenuItems>
     <NavigationViewItem x:Name="OverviewItem" Content="运行概览" Tag="overview" IsSelected="True"><NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon></NavigationViewItem>
+    <NavigationViewItem x:Name="DashboardItem" Content="硬件仪表盘" Tag="dashboard"><NavigationViewItem.Icon><SymbolIcon Symbol="Calculator" /></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem x:Name="ConfigurationItem" Content="挖矿配置" Tag="configuration"><NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem x:Name="LogsItem" Content="运行日志" Tag="logs"><NavigationViewItem.Icon><SymbolIcon Symbol="Document" /></NavigationViewItem.Icon></NavigationViewItem>
    </NavigationView.MenuItems>
@@ -60,9 +61,46 @@
          <TextBlock x:Name="ConfigurationSummary" Text="SRBMiner · GPU · 演示模式" TextWrapping="Wrap" />
          <TextBlock x:Name="DeviceLabel" Text="内核尚未报告设备名称" TextWrapping="Wrap" />
          <TextBlock x:Name="RunEvidenceLabel" Text="任务运行后显示内核报告的设备和算力。" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-         <StackPanel Orientation="Horizontal" Spacing="10"><Button Content="修改配置" Click="ShowConfiguration" /><Button Content="查看运行日志" Click="ShowLogs" /></StackPanel>
+         <StackPanel Orientation="Horizontal" Spacing="10"><Button Content="修改配置" Click="ShowConfiguration" /><Button Content="查看运行日志" Click="ShowLogs" /><Button Content="查看硬件" Click="ShowDashboard" /></StackPanel>
         </StackPanel>
        </Border>
+      </StackPanel>
+     </ScrollViewer>
+     <ScrollViewer x:Name="DashboardPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="16">
+       <Border Style="{StaticResource Card}">
+        <Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+         <StackPanel Spacing="6">
+          <TextBlock Text="本机硬件配置" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock x:Name="HardwareSummary" Text="尚未检测。" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+         </StackPanel>
+         <Button Grid.Column="1" x:Name="RescanButton" Content="重新检测" VerticalAlignment="Center" Click="RescanHardware" />
+        </Grid>
+       </Border>
+       <InfoBar x:Name="HardwareProblems" IsOpen="False" IsClosable="False" Severity="Warning" Title="部分硬件信息不可用" />
+       <InfoBar x:Name="HardwareAdvice" IsOpen="False" IsClosable="False" Severity="Informational" Title="硬件与挖矿模式" />
+       <ItemsControl x:Name="HardwareSections">
+        <ItemsControl.ItemTemplate>
+         <DataTemplate>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+           <StackPanel Spacing="10">
+            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding Rows}">
+             <ItemsControl.ItemTemplate>
+              <DataTemplate>
+               <Grid ColumnSpacing="16" Padding="0,4">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Label}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="13" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+               </Grid>
+              </DataTemplate>
+             </ItemsControl.ItemTemplate>
+            </ItemsControl>
+           </StackPanel>
+          </Border>
+         </DataTemplate>
+        </ItemsControl.ItemTemplate>
+       </ItemsControl>
       </StackPanel>
      </ScrollViewer>
      <ScrollViewer x:Name="ConfigurationPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">

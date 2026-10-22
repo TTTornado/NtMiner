@@ -72,6 +72,15 @@ SRBMiner 适配将界面地址转换成官方 `--pool host:port` 与 `--tls true
 - 内核报告设备名、新鲜正算力提示、零算力及过期算力区分、内存不足时显示所需与可用内存。
 - 实测 v100.46 表格摘要解析；累计份额不按每次刷新重复累加；内存不足停止重试。
 - 首次默认演示、不自动开挖；不连接旧版云端、不替换钱包、不关闭系统安全功能。
+- WinUI 硬件仪表盘：只读检测本机处理器、内存、主板、显卡、存储与系统，并给出与挖矿模式的对照提示。
+
+## 硬件仪表盘（WinUI）
+
+WinUI 的 **硬件仪表盘**页只读检测本机硬件：处理器核心与频率、内存插槽与频率、主板与 BIOS、显卡、存储、操作系统，并显示当前可用内存。页面同时对照当前挖矿模式给出提示：本机没有物理集成显卡却选择「仅核显」时提前说明可能无法启动；可用内存低于 1.5 GB 时说明 BzMiner 离线自测可能因内存不足被跳过。
+
+显卡按三类区分：`ROOT\` 枚举路径或远程控制/虚拟显示类名称识别的**虚拟显示适配器**不计入可挖矿设备；含 `GeForce`、`Radeon RX`、`Arc` 等关键词的算**独显**；含 `UHD`、`Iris`、`Radeon(TM) Graphics` 等的算**核显**。这只是界面提示，不替代内核自己的设备检测。WMI 的 `AdapterRAM` 是 32 位字段，显存接近 4 GB 时界面会标注该数值不可信。
+
+**探测由后台 Agent 执行。** WinUI 3 运行在 `Microsoft.NETCore.App` 上，`System.Management` 在该宿主会抛 `PlatformNotSupportedException`（该包只认可 `Microsoft.WindowsDesktop.App` 桌面框架），因此前端通过命名管道新增的 `hardware` 命令向 Agent 取值。仪表盘需要 Agent 已连接；后端未连接时页面会说明而不是显示错误数据。
 
 配置存储在 `%LOCALAPPDATA%\NtMiner.Modern\profile.json`。只存收款地址等挖矿配置，不应输入私钥或助记词；不自动导入旧 NtMiner 配置。当前格式为 v3；现代版 v1 迁移后保留 SRBMiner/GPU 原有行为，v2 迁移保留 CPU/GPU 与自测选择，仅显式保存后写入 v3。未知版本拒绝读取且不会被自动覆盖。WPF 同步识别核显模式，切换前端不会扩大设备范围。
 
@@ -81,7 +90,12 @@ SRBMiner 适配将界面地址转换成官方 `--pool host:port` 与 `--tls true
 .\scripts\Build.ps1 -Action Build
 .\scripts\Build.ps1 -Action Test
 .\scripts\Build.ps1 -Action Run
+
+# 首次或新增依赖后联网补齐工作区包缓存；之后构建仍可离线。
+.\scripts\Build.ps1 -Action Build -RestorePackages
 ```
+
+包来源限定为工作区内的 `.tools\nuget-packages`（`NuGet.Config` 指向该目录），因此常规构建不访问网络。WinUI 独立项目仍从 `WinUI.NuGet.Config` 还原并锁定版本。
 
 也可双击 `Test.cmd`。测试使用控制台验收程序，不依赖测试框架包；进程/IPC 验证需要正常 Windows 用户环境，受限沙箱可能禁止命名管道和文件替换。WPF 验收会短暂打开测试窗口，并将初始和演示截图写入 `artifacts/ui/`。
 
@@ -89,10 +103,10 @@ SRBMiner 适配将界面地址转换成官方 `--pool host:port` 与 `--tls true
 |---|---|
 | NTMiner.Domain | 配置、状态、协议模型，目标 net10.0 |
 | NTMiner.Application | 适配器契约、单任务生命周期与重试，目标 net10.0 |
-| NTMiner.Infrastructure | Windows Job、SRBMiner 参数/日志、配置文件和本机通信 |
-| NTMiner.Agent | 后台命令处理和连接租约 |
-| NTMiner.Desktop | WPF 工作台及用户操作 |
-| NTMiner.WinUI | 独立 WinUI 3 工作台，导航、主题与本机控制，单独构建 |
+| NTMiner.Infrastructure | Windows Job、SRBMiner 参数/日志、配置文件、本机通信与只读硬件探测 |
+| NTMiner.Agent | 后台命令处理和连接租约，并持有硬件探测（WMI 在这里可用） |
+| NTMiner.Desktop | WPF 工作台及用户操作（当前冻结，新功能只进 WinUI） |
+| NTMiner.WinUI | WinUI 3 主前端：导航、主题、本机控制与硬件仪表盘，单独构建 |
 | NTMiner.FakeMiner | 自建演示内核，不连接网络 |
 | NTMiner.Tests | 配置、解析、进程与 IPC 验收 |
 | NTMiner.UiTests | WPF 演示启停、配置校验及布局截图 |

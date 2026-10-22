@@ -63,7 +63,7 @@ public sealed record MiningSnapshot(
     LogEntry[] Logs, MinerKind Miner = MinerKind.SrbMiner, MiningDevice Device = MiningDevice.Gpu, int CpuThreads = 1, bool BenchmarkMode = false,
     string[]? DeviceNames = null);
 public sealed record AgentRequest(string Command, MiningOptions? Options = null, long AfterSequence = 0);
-public sealed record AgentResponse(bool Success, string? Error, MiningSnapshot Snapshot);
+public sealed record AgentResponse(bool Success, string? Error, MiningSnapshot Snapshot, HardwareSnapshot? Hardware = null);
 public sealed record MinerObservation(double? Hashrate = null, string? Unit = null,
     bool Accepted = false, bool Rejected = false, string? FatalError = null,
     int? AcceptedTotal = null, int? RejectedTotal = null, string? DeviceName = null);

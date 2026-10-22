@@ -1,3 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup><ProjectReference Include="..\NTMiner.Application\NTMiner.Application.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NTMiner.Application\NTMiner.Application.csproj" />
+    <!-- 只读硬件探测（WMI）。版本与本机 .NET 10 运行时对齐，不随框架自动提供。 -->
+    <PackageReference Include="System.Management" Version="10.0.13" />
+  </ItemGroup>
 </Project>

@@ -59,6 +59,24 @@ public sealed partial class MainWindow
             DeviceChoice.SelectedIndex = 2;
             ThemeChoice.SelectedIndex = 2;
             await CaptureAsync("overview-dark.png");
+            Navigation.SelectedItem = DashboardItem; ShowPage("dashboard");
+            try { await LoadHardwareAsync(); }
+            catch (Exception ex) { throw new InvalidOperationException("LoadHardwareAsync threw: " + ex.Message + " | connected=" + _connected + " detecting=" + _detecting, ex); }
+            if (_hardware is null) throw new InvalidOperationException($"Hardware not loaded. connected={_connected} detecting={_detecting} summary={HardwareSummary.Text}");
+            Check(_hardware is not null, $"Dashboard hardware loaded (summary={HardwareSummary.Text})");
+            var hardware = _hardware!;
+            Check(hardware.Processor is not null || hardware.Problems.Length > 0, "Dashboard detects hardware or reports why it cannot");
+            var rendered = HardwareSections.ItemsSource as IReadOnlyList<HardwareSection>;
+            Check(LastRenderedSectionCount > 0 && rendered is { Count: > 0 }, $"Dashboard renders at least one hardware section (rendered={LastRenderedSectionCount}, source={rendered?.Count ?? -1}, summary={HardwareSummary.Text})");
+            // 本机装有远程控制软件的虚拟显示适配器；它必须被排除在可挖矿设备之外。
+            if (hardware.Graphics.Length > 0)
+            {
+                var mineable = HardwareDisplay.Mineable(hardware.Graphics);
+                Check(mineable.All(g => !g.IsVirtual), "Virtual display adapters are excluded from mineable devices");
+                Check(HardwareSummary.Text.Contains("显卡") || HardwareDisplay.SupportsIntegratedOnly(hardware.Graphics) == false, "Summary describes the detected graphics");
+            }
+            Check(HardwareAdvice.IsOpen && !string.IsNullOrWhiteSpace(HardwareAdvice.Message), "Dashboard explains how hardware matches the selected mining mode");
+            await CaptureAsync("dashboard-dark.png");
             Navigation.SelectedItem = LogsItem; ShowPage("logs");
             Check(LogOutput.Text.Contains("[miner]"), "Logs remain visible across navigation");
             await CaptureAsync("logs-dark.png");

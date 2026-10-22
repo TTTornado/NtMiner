@@ -2,6 +2,20 @@
 
 日期：2026-10-21。环境：Windows x64，便携 .NET SDK 10.0.402。
 
+## 0.4 硬件仪表盘（2026-10-22）
+
+执行 `scripts/Build.ps1 -Action Test -Configuration Release` 与 `scripts/BuildWinUI.ps1 -Action Test -Configuration Release`。后台与 WPF Release 构建 0 警告、0 错误；后台验收 **33 项通过、0 失败**（新增 2 项）；WinUI 实际窗口验收 **22 项通过**（原 16 项 + 新增 6 项仪表盘检查）。
+
+新增后台验收：显卡三分类（虚拟适配器 / 核显 / 独显，含"独显名称含 Radeon 不得判为核显"的回归断言）、`SupportsIntegratedOnly` 的三种结果（含未知硬件返回 null）、容量格式化，以及在本机实际执行一次完整探测且不抛异常。
+
+本机实测探测结果（i5-13400 / B760M GAMING PLUS WIFI / 16 GB DDR5-6000 / WD Green SN350 1TB / Windows 11 26300）：处理器 10 核 16 线程、L3 20 MB；内存 1 条 16 GB 6000 MT/s；显卡识别为 `Todesk Virtual Display Adapter`（判为虚拟，已排除）与 `Intel(R) UHD Graphics 730`（判为核显）；BIOS H.10 / 2023-10-27。
+
+**已验证的限制**：`System.Management` 在 WinUI 进程内抛 `PlatformNotSupportedException`（"only supported for Windows desktop applications"），UI 线程与后台线程表现一致；同一程序集在控制台宿主（Agent）中正常工作。因此探测改为经命名管道由 Agent 执行，`AgentResponse` 增加可选的 `Hardware` 字段。期间同时修复伙伴进程部署缺陷：原先的复制规则不递归 `runtimes\<rid>\lib\<tfm>\` 子目录，导致 Agent 加载 `System.Management` 失败；WinUI 与 Tests 两处复制目标均已改为递归。
+
+界面证据：`artifacts/winui/dashboard-dark.png`（已目视检查摘要、模式对照、处理器分区与横幅隐藏）。仪表盘页不再显示与挖矿无关的模式横幅。本轮未启动真实内核，硬件数据来自 WMI 只读查询。
+
+**未验证**：仪表盘在无 WMI 权限、虚拟化或最小化系统上的表现仅有代码路径上的分区降级处理，未在真实受限环境中执行；温度、功耗、显存实际容量未纳入本页。
+
 ## 0.4 核显接入与反馈验收（2026-10-22）
 
 执行 `scripts/Build.ps1 -Action Test -Configuration Release` 和 Windows PowerShell 下的 `scripts/BuildWinUI.ps1 -Action Test -Configuration Release`。后台/WPF 与独立 WinUI Release 构建均为 0 警告、0 错误；后台 31 项通过、0 失败，WPF 界面回归通过，WinUI 16 项通过。

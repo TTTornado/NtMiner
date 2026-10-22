@@ -7,9 +7,10 @@
   </ItemGroup>
   <Target Name="CopyTestProcesses" AfterTargets="Build">
     <ItemGroup>
-      <Companion Include="..\..\src\NTMiner.Agent\bin\$(Configuration)\$(TargetFramework)\*" />
-      <Companion Include="..\NTMiner.FakeMiner\bin\$(Configuration)\$(TargetFramework)\*" />
+      <!-- 递归复制：伙伴进程的依赖可能位于 runtimes\<rid>\lib\<tfm>\ 子目录。 -->
+      <Companion Include="..\..\src\NTMiner.Agent\bin\$(Configuration)\$(TargetFramework)\**\*" />
+      <Companion Include="..\NTMiner.FakeMiner\bin\$(Configuration)\$(TargetFramework)\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(Companion)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(Companion)" DestinationFiles="@(Companion->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 </Project>

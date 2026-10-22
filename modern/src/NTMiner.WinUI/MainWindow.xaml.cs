@@ -97,6 +97,8 @@ public sealed partial class MainWindow : Window
         if (ReferenceEquals(sender, DeviceChoice) && SelectedDevice is MiningDevice.Cpu or MiningDevice.IntegratedGpu)
         { MinerChoice.SelectedIndex = 1; BenchmarkMode.IsChecked = true; }
         UpdateControls();
+        // 设备模式改变可能让硬件适配提示失效，重新评估一次。
+        if (_hardware is not null) RenderAdvice(_hardware);
     }
 
     private void UpdateControls()
@@ -261,14 +263,21 @@ public sealed partial class MainWindow : Window
     private void ShowPage(string tag)
     {
         OverviewPanel.Visibility = tag == "overview" ? Visibility.Visible : Visibility.Collapsed;
+        DashboardPanel.Visibility = tag == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ConfigurationPanel.Visibility = tag == "configuration" ? Visibility.Visible : Visibility.Collapsed;
         LogsPanel.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
-        PageHeading.Text = tag == "configuration" ? "挖矿配置" : tag == "logs" ? "运行日志" : "运行概览";
-        PageDescription.Text = tag == "configuration" ? "选择设备与内核，配置只保存在本机。" : tag == "logs" ? "核对内核输出、错误与接受份额。" : "查看任务、内核指标与运行状态。";
+        ModeBanner.Visibility = tag is "overview" or "configuration" or "logs" ? Visibility.Visible : Visibility.Collapsed;
+        PageHeading.Text = tag == "configuration" ? "挖矿配置" : tag == "logs" ? "运行日志" : tag == "dashboard" ? "硬件仪表盘" : "运行概览";
+        PageDescription.Text = tag == "configuration" ? "选择设备与内核，配置只保存在本机。"
+            : tag == "logs" ? "核对内核输出、错误与接受份额。"
+            : tag == "dashboard" ? "只读检测本机硬件，用于判断哪种挖矿模式可能可行。"
+            : "查看任务、内核指标与运行状态。";
+        if (tag == "dashboard") _ = LoadHardwareAsync();
     }
     private void ShowConfiguration(object sender, RoutedEventArgs args) { Navigation.SelectedItem = ConfigurationItem; ShowPage("configuration"); }
     private void ShowLogs(object sender, RoutedEventArgs args) { Navigation.SelectedItem = LogsItem; ShowPage("logs"); }
     private void ShowOverview(object sender, RoutedEventArgs args) { Navigation.SelectedItem = OverviewItem; ShowPage("overview"); }
+    private void ShowDashboard(object sender, RoutedEventArgs args) { Navigation.SelectedItem = DashboardItem; ShowPage("dashboard"); }
     private void ThemeChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!_ready) return;

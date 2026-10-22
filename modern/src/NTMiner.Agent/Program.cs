@@ -22,6 +22,7 @@ try
         var request = await PipeProtocol.ReadAsync<AgentRequest>(reader, lease.Token);
         if (request is null) break;
         string? error = null;
+        HardwareSnapshot? hardware = null;
         try
         {
             switch (request.Command)
@@ -29,13 +30,16 @@ try
                 case "status": break;
                 case "start": await session.StartAsync(request.Options ?? throw new ArgumentException("缺少配置。")); break;
                 case "stop": await session.StopAsync(); break;
+                // 硬件探测放在后台进程执行：WinUI 前端运行在 Microsoft.NETCore.App 上，
+                // System.Management 在那里会抛 PlatformNotSupportedException。
+                case "hardware": hardware = HardwareProbe.Capture(); break;
                 case "shutdown": await session.StopAsync(); break;
                 default: throw new ArgumentException("不支持的操作。");
             }
         }
         catch (Exception ex) { error = ex.Message; }
         using var sendTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await PipeProtocol.WriteAsync(writer, new AgentResponse(error is null, error, session.Snapshot(request.AfterSequence)), sendTimeout.Token);
+        await PipeProtocol.WriteAsync(writer, new AgentResponse(error is null, error, session.Snapshot(request.AfterSequence), hardware), sendTimeout.Token);
         if (request.Command == "shutdown") break;
     }
 }
