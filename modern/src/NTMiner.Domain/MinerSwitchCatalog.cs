@@ -93,11 +93,12 @@ public static class MinerSwitchCatalog
         // 演示模式不执行真实内核，也不应用任何内核开关，预览只说明这一点。
         if (options.DemoMode)
             return "<模拟内核> --demo （演示模式不加载所选内核文件，以下参数不生效）";
-        var parts = new List<string> { string.IsNullOrWhiteSpace(options.KernelPath) ? "<未选择内核>" : options.KernelPath };
+        var parts = new List<string> { string.IsNullOrWhiteSpace(options.KernelPath) ? "<未选择内核>" : "<所选 BzMiner>" };
         if (options.Miner == MinerKind.BzMiner)
         {
-            parts.AddRange(["-a", "pearl"]);
-            parts.Add(options.BenchmarkMode ? "--bench" : "-p " + Quote(options.Pool));
+            parts.AddRange(["-a", options.EffectiveAlgorithm]);
+            if (options.BenchmarkMode) parts.Add("--bench");
+            else foreach (var pool in options.AllPools()) parts.Add("-p " + Quote(pool));
             if (!options.BenchmarkMode)
             {
                 parts.Add("-w " + Quote(options.Wallet));
@@ -110,7 +111,9 @@ public static class MinerSwitchCatalog
         }
         else
         {
-            parts.AddRange(["--algorithm", "pearlhash", "--pool", options.Pool, "--wallet", options.Wallet]);
+            var pools = options.AllPools().Where(MiningOptions.IsValidPoolAddress).Select(p => new Uri(p)).ToArray();
+            parts.AddRange(["--algorithm", options.EffectiveAlgorithm, "--pool", string.Join(",", pools.Select(p => p.Authority)),
+                "--tls", string.Join(",", pools.Select(p => p.Scheme == "stratum+ssl" ? "true" : "false")), "--wallet", options.Wallet]);
         }
         foreach (var name in enabledNames)
             if (Find(options.Miner, name) is { } item && !parts.Contains(item.Argument))

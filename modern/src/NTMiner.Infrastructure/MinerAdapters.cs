@@ -18,10 +18,17 @@ public sealed class SrbMinerAdapter(string demoExecutable) : IMinerAdapter
             StandardErrorEncoding = System.Text.Encoding.UTF8
         };
         if (options.DemoMode) return info;
-        var pool = new Uri(options.Pool);
-        foreach (var argument in new[] { "--algorithm", "pearlhash", "--pool", pool.Authority,
-            "--tls", pool.Scheme == "stratum+ssl" ? "true" : "false",
-            "--wallet", options.Wallet, "--worker", options.Worker, "--password", "x", "--disable-cpu",
+        // 算法取自内核自身的列表；未选择时保留 pearl，避免破坏已有配置。
+        var algorithm = options.EffectiveAlgorithm;
+        info.ArgumentList.Add("--algorithm");
+        info.ArgumentList.Add(algorithm);
+        // 主矿池在前、备用矿池依次追加，由内核在连接失败时自行切换。
+        var targets = options.AllPools().Select(address => new Uri(address)).ToArray();
+        info.ArgumentList.Add("--pool");
+        info.ArgumentList.Add(string.Join(",", targets.Select(target => target.Authority)));
+        // TLS 以主矿池为准：同一组矿池混用协议时按主要连接决定。
+        foreach (var argument in new[] { "--tls", string.Join(",", targets.Select(target => target.Scheme == "stratum+ssl" ? "true" : "false")),
+            "--wallet", string.Join(",", targets.Select(_ => options.Wallet)), "--worker", string.Join(",", targets.Select(_ => options.Worker)), "--password", "x", "--disable-cpu",
             "--gpu-disable-oc", "--disable-msr-tweaks" })
             info.ArgumentList.Add(argument);
         // 已启用的内核参数；未知名称不在映射表中，不会拼进启动命令。
@@ -101,12 +108,17 @@ public sealed class BzMinerAdapter(string demoExecutable, string workingDirector
         };
         var arguments = new List<string>
         {
-            "--config", config, "-a", "pearl", "-o", "log",
+            "--config", config, "-a", options.EffectiveAlgorithm, "-o", "log",
             "--set", "http_enabled=false", "--disable_udp", "--auto-update", "off", "--plugin-update", "off",
             "--set", "log_table_interval=5000", "--no-bc250-gpu", "--no-bc250-cpu", "--no-bc250-cu"
         };
         if (options.BenchmarkMode) arguments.Add("--bench");
-        else arguments.AddRange(["-p", options.Pool, "-w", options.Wallet, "--worker", options.Worker]);
+        else
+        {
+            // 多个矿池依次传给内核，连接失败时由内核自行切换。
+            foreach (var poolAddress in options.AllPools()) arguments.AddRange(["-p", poolAddress]);
+            arguments.AddRange(["-w", options.Wallet, "--worker", options.Worker]);
+        }
         if (options.Device == MiningDevice.Cpu)
             arguments.AddRange(["--cpu", "1", "--nvidia", "0", "--amd", "0", "--intel", "0",
                 "--devices", "none", "--cpu_threads", options.CpuThreads.ToString(CultureInfo.InvariantCulture),

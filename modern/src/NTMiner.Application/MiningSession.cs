@@ -38,7 +38,7 @@ public sealed class MiningSession(IMinerAdapter adapter, Func<IProcessContainmen
         lock (_sync)
             return new(_stateMachine.Current, _options.DemoMode, _process?.Id, _startedAt,
                 _hashrate, _unit, _lastSpeedAt, _accepted, _rejected, _restarts, _sha256, _error,
-                _logs.Where(x => x.Sequence > after).Take(100).ToArray(), _options.Miner, _options.Device, _options.CpuThreads, _options.BenchmarkMode, _deviceNames.ToArray());
+                _logs.Where(x => x.Sequence > after).Take(100).ToArray(), _options.Miner, _options.Device, _options.CpuThreads, _options.BenchmarkMode, _deviceNames.ToArray(), _options.EffectiveAlgorithm);
     }
 
     public async Task StartAsync(MiningOptions options, CancellationToken token = default)
@@ -71,7 +71,7 @@ public sealed class MiningSession(IMinerAdapter adapter, Func<IProcessContainmen
             }
             var device = options.Device == MiningDevice.Cpu ? $"CPU / {options.CpuThreads} 线程" : MiningDisplay.DeviceName(options.Device);
             Log("info", options.DemoMode ? $"演示模式：{options.Miner} / {device}，模拟日志和份额，不连接矿池。"
-                : options.BenchmarkMode ? $"启动 PRL / BzMiner / {device} 离线自测，无矿池、无收益，完成验证后请点击停止。"
+                : options.BenchmarkMode ? $"启动 {options.EffectiveAlgorithm} / BzMiner / {device} 离线自测，无矿池、无收益，完成验证后请点击停止。"
                 : $"启动 PRL / {options.Miner} / {device}，等待矿池接受份额。");
             Log("info", $"内核 SHA-256：{sha}（文件标识，不代表来源认证）");
             _supervisor = SuperviseAsync(startInfo, _sessionCts.Token);
