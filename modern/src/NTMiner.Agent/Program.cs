@@ -6,7 +6,7 @@ if (args.Length != 2 || args[0] != "--pipe" || !Guid.TryParseExact(args[1], "N",
 var pipeName = "NtMiner.Modern." + args[1];
 await using var session = new MiningSession(
     new MinerAdapterRouter(Path.Combine(AppContext.BaseDirectory, "NTMiner.FakeMiner.exe"),
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NtMiner.Modern", "BzMiner")), () => new WindowsJob());
+        AppStoragePaths.BzMinerWorkingDirectory), () => new WindowsJob());
 try
 {
     await using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
@@ -23,6 +23,8 @@ try
         if (request is null) break;
         string? error = null;
         HardwareSnapshot? hardware = null;
+        GpuSensorSnapshot? sensors = null;
+        MinerAlgorithmCatalog? algorithms = null;
         try
         {
             switch (request.Command)
@@ -33,13 +35,20 @@ try
                 // 硬件探测放在后台进程执行：WinUI 前端运行在 Microsoft.NETCore.App 上，
                 // System.Management 在那里会抛 PlatformNotSupportedException。
                 case "hardware": hardware = HardwareProbe.Capture(); break;
+                // 传感器同样放在后台进程：前端进程没有厂商 SDK 的加载上下文。
+                case "sensors": sensors = GpuSensorService.CreateDefault().Capture(); break;
+                // 算法列表来自内核自身的 --list-algos 输出，需要知道当前选择的内核文件。
+                case "algorithms":
+                    algorithms = MinerAlgorithmProbe.Capture(request.Options?.Miner ?? MinerKind.BzMiner,
+                        request.Options?.KernelPath ?? "");
+                    break;
                 case "shutdown": await session.StopAsync(); break;
                 default: throw new ArgumentException("不支持的操作。");
             }
         }
         catch (Exception ex) { error = ex.Message; }
         using var sendTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await PipeProtocol.WriteAsync(writer, new AgentResponse(error is null, error, session.Snapshot(request.AfterSequence), hardware), sendTimeout.Token);
+        await PipeProtocol.WriteAsync(writer, new AgentResponse(error is null, error, session.Snapshot(request.AfterSequence), hardware, sensors, algorithms), sendTimeout.Token);
         if (request.Command == "shutdown") break;
     }
 }
