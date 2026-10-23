@@ -29,12 +29,13 @@ public sealed partial class MainWindow
             await Wait(() => _connected && !_busy);
             ThemeChoice.SelectedIndex = 1;
             Check(DemoMode.IsOn && _state == MiningState.Idle, "Default is demo; no automatic mining");
+            Check(ImportedKernelChoice.Items.Count == 0 && KernelPath.Text == "", "Fresh kernel library and selector are empty");
             // 首次打开就必须正确：曾因构造函数里过早判断 IsPaneOpen 而把这段说明藏起来。
             Check(PaneFooterText.Visibility == Visibility.Visible, "Pane footer is visible on first open without toggling the pane");
             await CaptureAsync("overview-light.png");
             await StartTaskAsync();
             await Wait(() => _state == MiningState.Mining && !_busy);
-            Check(SharesLabel.Text != "0 / 0" && SpeedLabel.Text.Contains("MH/s"), "SRBMiner demo metrics arrive through real agent");
+            Check(SharesLabel.Text != "0 / 0" && SpeedLabel.Text.Contains("H/s"), "BzMiner demo metrics arrive through real agent");
             await CaptureAsync("demo-light.png");
             await StopTaskAsync();
             Check(_state == MiningState.Idle, "Stop completes and returns idle");
@@ -120,9 +121,33 @@ public sealed partial class MainWindow
             await CaptureAsync("configuration-dark.png");
             await _store.SaveAsync(Options());
             var saved = await _store.LoadAsync();
-            Check(saved.SchemaVersion == 4 && saved.Device == MiningDevice.IntegratedGpu && saved.BenchmarkMode, "WinUI saves igpu and benchmark in the shared v4 profile");
+            Check(saved.SchemaVersion == 5 && saved.Device == MiningDevice.IntegratedGpu && saved.BenchmarkMode, "WinUI saves igpu and benchmark in the shared v5 profile");
             Check(CommandLinePreview.Text.Contains("--igpu") && CommandLinePreview.Text.Contains("--bench"), "Command-line preview reflects the selected device and offline mode");
             Check(CommonSwitchPanel.Children.Count > 0 || AdvancedSwitchPanel.Children.Count > 0, "Kernel switches are rendered for the selected kernel");
+            var addressA = "prl1" + new string('a', 58);
+            var addressB = "prl1" + new string('b', 58);
+            Wallet.Text = addressA; AddWallet(this, new RoutedEventArgs());
+            Wallet.Text = addressB; AddWallet(this, new RoutedEventArgs());
+            WalletChoice.SelectedItem = addressA;
+            Check(Wallet.Text == addressA && _wallets.Length == 2, "Saved wallet selection updates the payout address");
+            BackupPoolText.Text = "stratum+tcp://primary-backup.example:3333\nstratum+ssl://secure-backup.example:443";
+            AlgorithmText.Text = "pearl";
+            if (_saveTask is not null) await _saveTask;
+            var extended = await _store.LoadAsync();
+            Check(extended.BackupPools.Length == 2 && extended.SavedWallets.Length == 2 && extended.Algorithm == "pearl", "Wallet list, ordered backups and algorithm persist together");
+            RemoveWallet(this, new RoutedEventArgs());
+            if (_saveTask is not null) await _saveTask;
+            Check((await _store.LoadAsync()).Wallet == "" && _wallets.Length == 1, "Removing the current wallet does not silently select another payout");
+            AlgorithmChoice.ItemsSource = new[] { new MinerAlgorithm("cn", 1, ["opencl"]), new MinerAlgorithm("pearl", 2, ["opencl"]) };
+            AlgorithmChoice.SelectedIndex = -1;
+            AlgorithmChoice.IsDropDownOpen = true;
+            await Task.Delay(2200);
+            Check(AlgorithmChoice.IsDropDownOpen && AlgorithmChoice.IsEnabled, "Algorithm dropdown stays open across periodic status refreshes");
+            AlgorithmChoice.SelectedIndex = 1;
+            AlgorithmChoice.IsDropDownOpen = false;
+            Check(AlgorithmText.Text == "pearl", "Algorithm selection updates the persisted field");
+            await RefreshSensorsAsync();
+            Check(_sensors is not null && SensorSourceLabel.Text.Length > 0, "Sensor IPC renders readings or an explicit unavailable explanation");
             // Feed controlled snapshots only after stopping the actual demo session.
             _poll?.Stop();
             Navigation.SelectedItem = OverviewItem; ShowPage("overview");
@@ -142,6 +167,16 @@ public sealed partial class MainWindow
             Check(StateLabel.Text == "任务失败" && SpeedLabel.Text == "—" && FeedbackBar.Message.Contains("1737 MB"), "Memory failure shows required and available memory and hides stale speed");
             await CaptureAsync("igpu-memory-sample-dark.png");
             Apply(current);
+            var importSource = Path.Combine(_smokeDirectory!, "import-source");
+            Directory.CreateDirectory(importSource);
+            var importedExe = Path.Combine(importSource, "bzminer.exe");
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "NTMiner.FakeMiner.exe"), importedExe, true);
+            await ImportKernelAsync(importedExe);
+            Check(ImportedKernelChoice.SelectedItem is ImportedKernel && KernelPath.Text != importedExe && File.Exists(KernelPath.Text), "Import copies and selects a managed kernel without executing it");
+            if (_saveTask is not null) await _saveTask;
+            var importedProfile = await _store.LoadAsync();
+            RefreshImportedKernels(importedProfile.KernelPath);
+            Check(ImportedKernelChoice.SelectedItem is ImportedKernel && KernelPath.Text == importedProfile.KernelPath, "Imported kernel selection persists and restores");
         }
         catch (Exception ex) { error = ex.ToString(); }
         finally

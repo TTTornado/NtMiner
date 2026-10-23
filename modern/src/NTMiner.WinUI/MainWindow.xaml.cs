@@ -14,12 +14,14 @@ public sealed partial class MainWindow : Window
 {
     private readonly AgentClient _client = new();
     private readonly ProfileStore _store;
+    private readonly KernelLibrary _kernelLibrary;
     private readonly Queue<string> _logs = new();
     private readonly string? _smokeDirectory;
     private DispatcherQueueTimer? _poll;
     private Task? _initialization;
     private bool _ready, _busy, _closing, _closeReady, _connected;
     private bool _confirming;
+    private bool _polling;
     private long _sequence;
     private MiningState _state;
     private string? _activeRunOptions;
@@ -28,6 +30,7 @@ public sealed partial class MainWindow : Window
     {
         _smokeDirectory = smokeDirectory;
         _store = new(smokeDirectory is null ? ProfileStore.DefaultPath : Path.Combine(smokeDirectory, "profile.json"));
+        _kernelLibrary = new(smokeDirectory is null ? KernelLibrary.DefaultRoot : Path.Combine(smokeDirectory, "kernels-" + Guid.NewGuid().ToString("N")));
         InitializeComponent();
         Title = "NtMiner · WinUI 3 · PRL";
         ExtendsContentIntoTitleBar = true;
@@ -65,10 +68,16 @@ public sealed partial class MainWindow : Window
         {
             try
             {
+                _suppressAutoSave = true;
+                var migrated = _smokeDirectory is null && await AppStorageMigration.MigrateLegacyDataAsync(_store, _kernelLibrary);
                 var options = _smokeDirectory is null ? await _store.LoadAsync() : new MiningOptions();
-                KernelPath.Text = options.KernelPath; Wallet.Text = options.Wallet; Pool.Text = options.Pool; Worker.Text = options.Worker;
+                RefreshImportedKernels(options.KernelPath); Wallet.Text = options.Wallet; Pool.Text = options.Pool; Worker.Text = options.Worker;
+                var profilePathNeedsRefresh = !string.Equals(options.KernelPath, KernelPath.Text, StringComparison.OrdinalIgnoreCase);
+                AlgorithmText.Text = options.Algorithm;
+                BackupPoolText.Text = string.Join(Environment.NewLine, options.BackupPools);
+                _wallets = options.SavedWallets.ToArray(); RefreshWallets();
                 DemoMode.IsOn = options.DemoMode; AutoRecover.IsChecked = options.AutoRecover;
-                MinerChoice.SelectedIndex = options.Miner == MinerKind.BzMiner ? 1 : 0;
+                MinerChoice.SelectedIndex = 1;
                 DeviceChoice.SelectedIndex = (int)options.Device;
                 CpuThreads.Value = options.CpuThreads; BenchmarkMode.IsChecked = options.BenchmarkMode;
                 ThemeChoice.SelectedIndex = (int)options.Theme;
@@ -77,12 +86,16 @@ public sealed partial class MainWindow : Window
                 _suppressAutoSave = true;
                 RestoreSwitches(options);   // 内部会调用 RebuildSwitches，保证复选框存在
                 _suppressAutoSave = false;
+                _profileWritable = true;
+                if (profilePathNeedsRefresh && _smokeDirectory is null) await _store.SaveAsync(Options());
                 _lastSavedOptions = System.Text.Json.JsonSerializer.Serialize(Options());
                 AutoSaveState.Text = "配置已载入，修改后自动保存。";
                 UpdateControls();
                 UpdateCommandLinePreview();
+                if (migrated) Feedback("旧版配置与已导入内核已复制到软件安装目录。", InfoBarSeverity.Success);
             }
             catch (Exception ex) { Feedback("配置未加载：" + ex.Message, InfoBarSeverity.Warning); }
+            finally { _suppressAutoSave = false; }
             await _client.ConnectAsync();
             _connected = true;
             Apply((await _client.SendAsync(new("status"))).Snapshot);
@@ -90,11 +103,12 @@ public sealed partial class MainWindow : Window
             _poll.Interval = TimeSpan.FromSeconds(1);
             _poll.Tick += PollStatus;
             _poll.Start();
+            StartSensorPolling();
         }
         catch (Exception ex) { ConnectionFailed(ex); }
     }
 
-    private MinerKind SelectedMiner => MinerChoice.SelectedIndex == 1 ? MinerKind.BzMiner : MinerKind.SrbMiner;
+    private MinerKind SelectedMiner => MinerKind.BzMiner;
     private MiningDevice SelectedDevice => (MiningDevice)DeviceChoice.SelectedIndex;
     private bool IsBenchmark => SelectedMiner == MinerKind.BzMiner && BenchmarkMode.IsChecked == true;
     private bool HasActiveTask => _state is MiningState.Starting or MiningState.Running or MiningState.Mining or MiningState.Recovering or MiningState.Stopping;
@@ -109,6 +123,7 @@ public sealed partial class MainWindow : Window
         KernelPath = KernelPath.Text.Trim(), Wallet = Wallet.Text.Trim(), Pool = Pool.Text.Trim(), Worker = Worker.Text.Trim(),
         KernelSwitches = EnabledSwitches(),
         Theme = (AppTheme)ThemeChoice.SelectedIndex
+        , Algorithm = AlgorithmText.Text.Trim(), BackupPools = BackupPoolText.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), SavedWallets = _wallets.ToArray()
     };
 
     private void ModeChanged(object sender, RoutedEventArgs e)
@@ -121,6 +136,11 @@ public sealed partial class MainWindow : Window
     private void MinerSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
+        if (ReferenceEquals(sender, MinerChoice))
+        {
+            AlgorithmChoice.ItemsSource = null;
+            if (AlgorithmText.Text is "pearl" or "pearlhash") AlgorithmText.Text = "";
+        }
         if (ReferenceEquals(sender, MinerChoice) && SelectedMiner == MinerKind.SrbMiner) { DeviceChoice.SelectedIndex = 0; BenchmarkMode.IsChecked = false; }
         if (ReferenceEquals(sender, DeviceChoice) && SelectedDevice is MiningDevice.Cpu or MiningDevice.IntegratedGpu)
         { MinerChoice.SelectedIndex = 1; BenchmarkMode.IsChecked = true; }
@@ -140,18 +160,22 @@ public sealed partial class MainWindow : Window
         StartButton.IsEnabled = _connected && editable;
         StopButton.IsEnabled = _connected && !_busy && HasActiveTask && !_closing;
         MinerChoice.IsEnabled = DeviceChoice.IsEnabled = editable;
+        ImportedKernelChoice.IsEnabled = editable;
+        ImportKernelButton.IsEnabled = editable;
+        DeleteKernelButton.IsEnabled = editable && ImportedKernelChoice.SelectedItem is ImportedKernel;
         CpuOptions.Visibility = SelectedDevice == MiningDevice.Cpu ? Visibility.Visible : Visibility.Collapsed;
         CpuThreads.IsEnabled = editable && SelectedDevice == MiningDevice.Cpu;
         BenchmarkMode.IsEnabled = editable && SelectedMiner == MinerKind.BzMiner;
         KernelPath.IsEnabled = editable && !DemoMode.IsOn;
         Wallet.IsEnabled = Pool.IsEnabled = Worker.IsEnabled = editable;
+        WalletChoice.IsEnabled = BackupPoolText.IsEnabled = AlgorithmText.IsEnabled = AlgorithmChoice.IsEnabled = editable;
         AutoRecover.IsEnabled = editable && !IsBenchmark;
         WalletFields.Visibility = IsBenchmark ? Visibility.Collapsed : Visibility.Visible;
         StartButton.Content = DemoMode.IsOn ? "开始演示" : IsBenchmark ? "开始离线自测" : "开始挖矿";
         ModeBanner.Title = DemoMode.IsOn ? "演示模式" : IsBenchmark ? MiningDisplay.DeviceName(SelectedDevice) + " · 离线自测" : "真实矿池模式";
         ModeBanner.Severity = DemoMode.IsOn ? InfoBarSeverity.Informational : InfoBarSeverity.Warning;
         ModeBanner.Message = DemoMode.IsOn ? "显示模拟算力和份额，不连接矿池，不运行真实挖矿。"
-            : IsBenchmark ? "使用所选设备运行真实 PRL 算法，不需要钱包或矿池，不产生收益；完成后请点击停止。"
+            : IsBenchmark ? $"使用所选设备运行 {Options().EffectiveAlgorithm} 离线计算，不需要钱包或矿池，不产生收益；完成后请点击停止。"
             : "使用你选择的本机内核与收款配置；开始前请核对内核来源和完整地址。";
         DeviceHint.Text = SelectedDevice == MiningDevice.IntegratedGpu ? "仅使用核显，禁用 CPU 挖矿；核显与系统共享内存，请保留足够可用内存。"
             : SelectedDevice == MiningDevice.Cpu ? "只使用设定的 CPU 线程，禁用 GPU 挖矿。"
@@ -169,7 +193,12 @@ public sealed partial class MainWindow : Window
             picker.FileTypeFilter.Add(".exe");
             WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
             var file = await picker.PickSingleFileAsync();
-            if (file is not null) KernelPath.Text = file.Path;
+            if (file is not null)
+            {
+                _busy = true; UpdateControls();
+                try { await ImportKernelAsync(file.Path); Feedback("BzMiner 已导入本软件内核库；未启动内核。", InfoBarSeverity.Success); }
+                finally { _busy = false; UpdateControls(); }
+            }
         }
         catch (Exception ex) { Feedback("文件选择失败：" + ex.Message, InfoBarSeverity.Error); }
     }
@@ -188,6 +217,7 @@ public sealed partial class MainWindow : Window
         {
             if (!options.DemoMode)
             {
+                var selectedKernelName = (ImportedKernelChoice.SelectedItem as ImportedKernel)?.DisplayName ?? "未选择内核";
                 var dialog = new ContentDialog
                 {
                     XamlRoot = Root.XamlRoot, Title = "核对本次运行配置", PrimaryButtonText = "确认启动", CloseButtonText = "取消",
@@ -195,8 +225,8 @@ public sealed partial class MainWindow : Window
                     Content = new TextBlock
                     {
                         TextWrapping = TextWrapping.Wrap,
-                        Text = options.BenchmarkMode ? $"BzMiner / {MiningDisplay.DeviceName(options.Device)}{(options.Device == MiningDevice.Cpu ? $" / {options.CpuThreads} 线程" : "")}\n\n内核：{options.KernelPath}\n\n将使用所选设备运行真实离线自测，不连接矿池、不产生收益。"
-                            : $"{options.Miner} / {options.Device}\n\n内核：{options.KernelPath}\n收款地址：{options.Wallet}\n矿池：{options.Pool}\n矿机名：{options.Worker}\n\n请核对来源与完整地址。开发费按实际内核版本执行。"
+                        Text = options.BenchmarkMode ? $"BzMiner / {MiningDisplay.DeviceName(options.Device)}{(options.Device == MiningDevice.Cpu ? $" / {options.CpuThreads} 线程" : "")}\n\n内核：{selectedKernelName}\n\n将使用所选设备运行真实离线自测，不连接矿池、不产生收益。"
+                            : $"{options.Miner} / {options.Device}\n\n内核：{selectedKernelName}\n收款地址：{options.Wallet}\n矿池：{options.Pool}\n矿机名：{options.Worker}\n\n请核对来源与完整地址。开发费按实际内核版本执行。"
                     }
                 };
                 _confirming = true;
@@ -233,11 +263,12 @@ public sealed partial class MainWindow : Window
 
     private async void PollStatus(DispatcherQueueTimer sender, object args)
     {
-        if (_busy || _closing || !_connected) return;
-        _busy = true;
+        if (_busy || _polling || _closing || !_connected) return;
+        // Status reads must not disable editors: doing so closes an open ComboBox popup.
+        _polling = true;
         try { Apply((await _client.SendAsync(new("status", AfterSequence: _sequence))).Snapshot); }
         catch (Exception ex) { ConnectionFailed(ex); }
-        finally { _busy = false; UpdateControls(); }
+        finally { _polling = false; }
     }
 
     private void Apply(MiningSnapshot snapshot)
@@ -245,7 +276,7 @@ public sealed partial class MainWindow : Window
         _state = snapshot.State;
         UpdateRestartHint();
         StateLabel.Text = MiningDisplay.StateText(snapshot, DateTimeOffset.Now);
-        ProcessLabel.Text = snapshot.ProcessId is { } pid ? $"{MiningDisplay.MinerName(snapshot.Miner)} / {MiningDisplay.DeviceName(snapshot.Device)}{(snapshot.Device == MiningDevice.Cpu ? $" / {snapshot.CpuThreads} 线程" : "")} · PID {pid}" : "内核未运行";
+        ProcessLabel.Text = snapshot.ProcessId is { } pid ? $"{MiningDisplay.MinerName(snapshot.Miner)} / {MiningDisplay.DeviceName(snapshot.Device)}{(snapshot.Device == MiningDevice.Cpu ? $" / {snapshot.CpuThreads} 线程" : "")} · PID {pid} · {snapshot.Algorithm}" : "内核未运行";
         bool fresh = MiningDisplay.Fresh(snapshot, DateTimeOffset.Now);
         DeviceLabel.Text = snapshot.DeviceNames is { Length: > 0 } names ? (snapshot.DemoMode ? "模拟设备：" : "内核报告设备：") + string.Join("、", names) : "内核尚未报告设备名称（所选模式不代表已识别硬件）";
         RunEvidenceLabel.Text = MiningDisplay.Evidence(snapshot, DateTimeOffset.Now);
@@ -277,7 +308,8 @@ public sealed partial class MainWindow : Window
         if (_closeReady) return;
         args.Cancel = true;
         if (_closing) return;
-        _closing = true; _poll?.Stop(); UpdateControls();
+        _closing = true; _poll?.Stop(); StopSensorPolling(); UpdateControls();
+        if (_saveTask is not null) await _saveTask;
         if (_initialization is not null) await _initialization;
         _poll?.Stop();
         try { await _client.DisposeAsync(); }

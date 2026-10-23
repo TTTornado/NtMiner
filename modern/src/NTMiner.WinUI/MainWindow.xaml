@@ -58,6 +58,37 @@
         <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel Spacing="12"><TextBlock Text="恢复次数" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock x:Name="RestartsLabel" Text="0" FontSize="27" FontWeight="SemiBold" /></StackPanel></Border>
        </Grid>
        <Border Style="{StaticResource Card}">
+        <StackPanel Spacing="12">
+         <Grid>
+          <TextBlock Text="显卡传感器" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock x:Name="SensorSourceLabel" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+         </Grid>
+         <TextBlock x:Name="SensorEmptyHint" Text="尚未读取显卡传感器。" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+         <ItemsControl x:Name="GpuSensorList">
+          <ItemsControl.ItemTemplate>
+           <DataTemplate>
+            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12,10" Margin="0,0,0,8">
+             <StackPanel Spacing="6">
+              <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <Grid ColumnSpacing="18" RowSpacing="4">
+               <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+               </Grid.ColumnDefinitions>
+               <StackPanel Orientation="Horizontal" Spacing="6"><TextBlock Text="温度" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{Binding Temperature}" FontSize="12" MinWidth="44" Foreground="{Binding TemperatureBrush}" /></StackPanel>
+               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"><TextBlock Text="风扇" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{Binding Fan}" FontSize="12" /></StackPanel>
+               <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"><TextBlock Text="功耗" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{Binding Power}" FontSize="12" /></StackPanel>
+               <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"><TextBlock Text="核心" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{Binding Clock}" FontSize="12" /></StackPanel>
+               <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4"><TextBlock Text="显存" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{Binding Memory}" FontSize="12" /></StackPanel>
+              </Grid>
+              <TextBlock Text="{Binding OverclockNote}" FontSize="11" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+             </StackPanel>
+            </Border>
+           </DataTemplate>
+          </ItemsControl.ItemTemplate>
+         </ItemsControl>
+        </StackPanel>
+       </Border>
+       <Border Style="{StaticResource Card}">
         <StackPanel Spacing="14">
          <TextBlock Text="本次运行" FontSize="18" FontWeight="SemiBold" />
          <TextBlock x:Name="ConfigurationSummary" Text="SRBMiner · GPU · 演示模式" TextWrapping="Wrap" />
@@ -119,19 +150,24 @@
        <Border Style="{StaticResource Card}">
         <StackPanel Spacing="14">
          <TextBlock Text="挖矿内核" FontSize="18" FontWeight="SemiBold" />
-         <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-          <ComboBox x:Name="MinerChoice" Header="内核" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="MinerSelectionChanged"><ComboBoxItem Content="SRBMiner" /><ComboBoxItem Content="BzMiner" /></ComboBox>
-          <ComboBox Grid.Column="1" x:Name="DeviceChoice" Header="设备" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="MinerSelectionChanged"><ComboBoxItem Content="全部 GPU" /><ComboBoxItem Content="CPU" /><ComboBoxItem Content="仅核显" /></ComboBox>
+         <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+          <ComboBox x:Name="ImportedKernelChoice" Header="已导入内核" PlaceholderText="尚未导入内核" DisplayMemberPath="DisplayName" HorizontalAlignment="Stretch" SelectionChanged="ImportedKernelSelected" />
+          <Button Grid.Column="1" x:Name="DeleteKernelButton" Content="删除" VerticalAlignment="Bottom" Click="DeleteKernelClicked" />
+          <Button Grid.Column="2" x:Name="ImportKernelButton" Content="导入 BzMiner exe" VerticalAlignment="Bottom" Click="ChooseKernel" />
+          <ComboBox x:Name="MinerChoice" Visibility="Collapsed" SelectedIndex="1" SelectionChanged="MinerSelectionChanged"><ComboBoxItem Content="SRBMiner" /><ComboBoxItem Content="BzMiner" /></ComboBox>
          </Grid>
-         <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-          <TextBox x:Name="KernelPath" Header="内核文件" PlaceholderText="请选择官方内核的 exe 文件" TextChanged="FieldChanged" />
-          <Button Grid.Column="1" Content="选择文件" VerticalAlignment="Bottom" Click="ChooseKernel" />
-         </Grid>
+         <ComboBox x:Name="DeviceChoice" Header="设备" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="MinerSelectionChanged"><ComboBoxItem Content="全部 GPU" /><ComboBoxItem Content="CPU" /><ComboBoxItem Content="仅核显" /></ComboBox>
+         <TextBox x:Name="KernelPath" Visibility="Collapsed" IsReadOnly="True" TextChanged="FieldChanged" />
          <StackPanel x:Name="CpuOptions" Visibility="Collapsed" Spacing="12">
           <NumberBox x:Name="CpuThreads" Header="CPU 线程数" Minimum="1" Value="1" SpinButtonPlacementMode="Inline" SmallChange="1" Width="220" HorizontalAlignment="Left" ValueChanged="NumberChanged" />
           <TextBlock x:Name="CpuHint" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
          </StackPanel>
          <TextBlock x:Name="DeviceHint" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+         <TextBlock Text="目前仅适配 BzMiner。列表只显示名称和版本。导入会复制 exe、配套 DLL 及 plugins/kernels 目录到软件安装目录，可随时删除；不执行内核，也不导入原矿池配置。" FontSize="12" TextWrapping="Wrap" />
+         <TextBox x:Name="AlgorithmText" Header="算法（留空使用 PRL 默认算法）" MaxLength="64" TextChanged="FieldChanged" />
+         <Button Content="读取 BzMiner 算法列表" Click="ReadAlgorithms" />
+         <ComboBox x:Name="AlgorithmChoice" Header="内核报告的可用算法" DisplayMemberPath="Name" HorizontalAlignment="Stretch" SelectionChanged="AlgorithmSelected" />
+         <TextBlock x:Name="AlgorithmHint" Text="矿池流程仅支持 PRL；其他算法仅用于离线自测。读取列表需要执行所选内核，不会启动挖矿。" TextWrapping="Wrap" FontSize="12" />
         </StackPanel>
        </Border>
 
@@ -139,8 +175,11 @@
         <StackPanel Spacing="14">
          <TextBlock Text="收款账户" FontSize="18" FontWeight="SemiBold" />
          <TextBox x:Name="Wallet" Header="钱包地址" PlaceholderText="prl1…（不要输入私钥或助记词）" TextChanged="FieldChanged" />
+         <ComboBox x:Name="WalletChoice" Header="已保存的钱包" HorizontalAlignment="Stretch" SelectionChanged="WalletSelected" />
+         <StackPanel Orientation="Horizontal" Spacing="10"><Button Content="保存当前地址" Click="AddWallet" /><Button Content="移除所选地址" Click="RemoveWallet" /></StackPanel>
          <StackPanel x:Name="WalletFields" Spacing="14">
           <TextBox x:Name="Pool" Header="矿池地址" PlaceholderText="stratum+tcp://主机:端口" TextChanged="FieldChanged" />
+          <TextBox x:Name="BackupPoolText" Header="备用矿池（每行一个，按顺序尝试）" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="8192" MinHeight="68" TextChanged="FieldChanged" />
           <TextBox x:Name="Worker" Header="矿机名" Text="rig01" TextChanged="FieldChanged" />
          </StackPanel>
          <CheckBox x:Name="BenchmarkMode" Content="离线自测：无需钱包或矿池，不产生收益" IsChecked="False" Click="ModeChanged" />

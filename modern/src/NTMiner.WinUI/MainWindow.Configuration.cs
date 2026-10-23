@@ -16,6 +16,46 @@ public sealed partial class MainWindow
 
     /// <summary>自动保存成功后记下的快照，用于判断是否还有未落盘的改动。</summary>
     private string? _lastSavedOptions;
+    private bool _profileWritable;
+    private string[] _wallets = [];
+    private MiningOptions? _pendingSave;
+    private Task? _saveTask;
+
+    private void RefreshWallets() { WalletChoice.ItemsSource = _wallets; }
+    private void WalletSelected(object sender, SelectionChangedEventArgs e)
+    { if (_ready && WalletChoice.SelectedItem is string address) Wallet.Text = address; }
+    private void AddWallet(object sender, RoutedEventArgs e)
+    {
+        if (_busy || HasActiveTask || _closing) return;
+        var result = WalletBook.Add(_wallets, Wallet.Text);
+        if (result.Error is not null) { Feedback(result.Error, InfoBarSeverity.Warning); return; }
+        _wallets = result.Wallets; RefreshWallets(); AutoSave();
+    }
+    private void RemoveWallet(object sender, RoutedEventArgs e)
+    {
+        if (_busy || HasActiveTask || _closing) return;
+        if (WalletChoice.SelectedItem is not string address) return;
+        _wallets = WalletBook.Remove(_wallets, address); RefreshWallets();
+        if (Wallet.Text == address) Wallet.Text = "";
+        AutoSave();
+    }
+    private void AlgorithmSelected(object sender, SelectionChangedEventArgs e)
+    { if (_ready && AlgorithmChoice.SelectedItem is MinerAlgorithm algorithm) AlgorithmText.Text = algorithm.Name; }
+    private async void ReadAlgorithms(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _closing || HasActiveTask || !_connected) return;
+        if (SelectedMiner != MinerKind.BzMiner) { AlgorithmHint.Text = "SRBMiner 请手动填写算法名；PRL 默认使用 pearlhash。"; return; }
+        _busy = true; UpdateControls();
+        try
+        {
+            var result = await _client.SendAsync(new("algorithms", Options()));
+            var catalog = result.Algorithms;
+            AlgorithmChoice.ItemsSource = catalog?.ForDevice(SelectedDevice) ?? [];
+            AlgorithmHint.Text = catalog?.IsUsable == true ? $"已读取 {catalog.Version}；按设备过滤。矿池模式仍仅支持 PRL，其他算法仅可离线自测。" : catalog?.Error ?? result.Error ?? "读取失败。";
+        }
+        catch (Exception ex) { AlgorithmHint.Text = "读取失败：" + ex.Message; }
+        finally { _busy = false; UpdateControls(); }
+    }
 
     /// <summary>按当前内核重建复选框。常用项直接展示，其余收进"高级设置"。</summary>
     private void RebuildSwitches()
@@ -96,24 +136,34 @@ public sealed partial class MainWindow
     /// 实时保存：任何字段改动都立即写入本机配置。
     /// 保存失败只提示，不打断输入；任务在运行时额外提示需要重启才生效。
     /// </summary>
-    private async void AutoSave()
+    private void AutoSave()
     {
-        if (_suppressAutoSave || !_ready || _closing) return;
+        if (_suppressAutoSave || !_profileWritable || !_ready || _closing) return;
+        _pendingSave = Options();
+        _saveTask ??= SavePendingAsync();
+    }
+    private async Task SavePendingAsync()
+    {
         try
         {
-            var options = Options();
+            await Task.Delay(200);
+            while (_pendingSave is { } options)
+            {
+            _pendingSave = null;
             var serialized = System.Text.Json.JsonSerializer.Serialize(options);
-            if (serialized == _lastSavedOptions) return;
+            if (serialized == _lastSavedOptions) continue;
             await _store.SaveAsync(options);
             _lastSavedOptions = serialized;
             AutoSaveState.Text = $"已自动保存 {DateTime.Now:HH:mm:ss}";
             UpdateRestartHint();
+            }
         }
         catch (Exception ex)
         {
             AutoSaveState.Text = "自动保存失败：" + ex.Message;
             Feedback("配置未能保存：" + ex.Message, InfoBarSeverity.Warning);
         }
+        finally { _saveTask = null; }
     }
 
     /// <summary>任务在跑时，改动不会影响正在进行的会话，用黄色横幅说明需要重启。</summary>
