@@ -1,5 +1,31 @@
 # Preview 0.4 验证记录
 
+## 安装目录存储与内核删除（2026-10-23）
+
+配置、内核、BzMiner 工作目录及算法枚举临时配置均改为写入程序所在安装目录：`profile.json`、`Kernels`、`Runtime/BzMiner` 与 `Runtime/Temp`。选择器仅显示名称和版本，并提供删除所选内核；删除会清空当前内核和算法选择。旧版 LocalAppData 配置与已导入内核会在首次启动时复制迁移，旧副本保留。Release 编译通过，0 警告、0 错误；本轮只编译，没有运行自动验收。
+
+## 内核库与 BzMiner 单前端（2026-10-23，前一轮验收）
+
+后台 **51 项通过、0 失败**，WinUI **45 项通过、0 失败**，Release 构建 **0 警告、0 错误**。新增内核库：首次为空，仅支持导入 `bzminer.exe`，复制到用户数据目录，保存并恢复选择。复制配套 DLL、plugins/kernels/licenses 和许可证，排除根目录配置与启动脚本；源文件保留。失败导入不写完成元数据，列表不显示不完整条目。界面仅开放 BzMiner，历史 SRBMiner 后台测试保留。本节数字记录的是前一轮版本，安装目录存储和删除功能请看上节。
+
+新增回归：隔离库初始为空、复制 exe 字节一致、配套文件复制及配置排除、重建服务可读取目录、导入后自动选择、保存后恢复选择。BzMiner 算法列表中 `pearlhash` 合并到 `pearl`，旧别名执行时归一。已查看 `artifacts/winui/configuration-dark.png` 确认空内核选择器布局。界面导入验收使用模拟 exe，不执行导入文件，也不覆盖真实用户配置或内核库；本轮没有真实挖矿。
+
+## 算法下拉框展开后收起修复（2026-10-23）
+
+根因：状态轮询复用了操作锁 `_busy`，每次状态响应刷新控件时会短暂设置配置控件 `IsEnabled=false`，导致原生 ComboBox 弹层关闭。改为独立的轮询重入标记 `_polling`，保持启动、停止、读取算法等操作的锁定逻辑。新增回归在下拉框展开后等待 2.2 秒，跨过周期刷新，确认仍展开且启用，再选择算法并检查字段更新。
+
+最新 WinUI 验收 **42 项通过、0 失败**，Release 构建 **0 警告、0 错误**；未启动真实挖矿。后台代码未改动，沿用同日已通过的 49 项完整验收。
+
+## 最新完整验收（2026-10-23）
+
+用户手动审批后，在正常 Windows 用户环境依次执行 `scripts/Build.ps1 -Action Test` 与 `scripts/BuildWinUI.ps1 -Action Test`。后台 **49 项通过、0 失败**；WinUI **41 项通过、0 失败**；两套 Release 构建均为 **0 警告、0 错误**。
+
+覆盖算法枚举超时、配置 v3/v4 升级到 v5、钱包列表选择与移除后不替换收款地址、备用矿池顺序及逐矿池 TLS、配置自动保存、传感器 IPC，以及原有状态、启停、恢复、窗口布局和清理。正常环境的命名管道及进程清理全部通过，先前受限环境的 6 项权限失败已解决。测试结束后无残留工作台、Agent、FakeMiner 或 BzMiner 进程。
+
+原始结果：`artifacts/validation.log`、`artifacts/winui-validation.log`、`artifacts/winui/result.json`。未运行真实挖矿、未连接真实矿池；NVIDIA/AMD 硬件读数、故障切池、长期稳定性、Win10 与安装包仍待独立验证。
+
+当前状态更新（2026-10-23）：本轮接入及未验证边界见 [CURRENT_STATUS.md](CURRENT_STATUS.md)。当前后台和 WinUI 日志分别为 `artifacts/validation.log`、`artifacts/winui-validation.log`，界面逐项结果为 `artifacts/winui/result.json`。下文各节为历史记录，不能混用测试数量或把已移除的 WPF 验收作为当前验收。
+
 日期：2026-10-21。环境：Windows x64，便携 .NET SDK 10.0.402。
 
 ## 0.4 移除 WPF 前端（2026-10-22）

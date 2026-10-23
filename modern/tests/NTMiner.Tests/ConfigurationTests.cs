@@ -32,7 +32,7 @@ internal static class ConfigurationTests
                 foreach (var bad in new[] { "stratum+tcp://user@host:3333", "stratum+tcp://host:3333/path", "stratum+tcp://host:3333?x=1", "stratum+tcp://host" })
                     Check((options with { Pool = bad }).Validate().Count > 0, "Bad pool accepted: " + bad);
                 var start = new SrbMinerAdapter(FakeMiner).CreateStartInfo(options);
-                Check(!start.UseShellExecute && start.Arguments == "" && start.ArgumentList.Contains("pearlhash"), "No shell or raw command string");
+                Check(!start.UseShellExecute && start.Arguments == "" && start.ArgumentList.Contains("pearlhash"), "No shell or raw command string; preserve SRBMiner PRL algorithm");
                 Check(start.ArgumentList.Contains(options.Wallet) && start.ArgumentList.Contains("pool.example.org:4444"), "Preserve explicit wallet and pool");
                 Check(start.ArgumentList.Contains("--tls") && start.ArgumentList.Contains("true"), "TLS must be explicit for SRBMiner");
             }

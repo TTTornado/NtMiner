@@ -1,5 +1,9 @@
 # NtMiner PRL Preview 0.4
 
+最新内核流程：界面目前仅适配 BzMiner。首次内核列表为空，请在挖矿配置页点击“导入 BzMiner exe”，从官方完整解压包选择文件；软件复制到安装目录下的 `Kernels` 后自动选中，列表只显示名称和版本，导入条目可删除。配置和运行生成文件也写在安装目录中，因此安装目录需要允许当前用户写入。旧外部路径需重新导入。BzMiner 的 `pearlhash` 别名合并显示为 `pearl`。以下早期 SRBMiner 接入说明保留作历史参考，当前界面不提供该选项。
+
+当前功能与验证边界以 [CURRENT_STATUS.md](CURRENT_STATUS.md) 为准（2026-10-23）。新增配置页算法选择、钱包列表、备用矿池与只读传感器展示；配置格式为 v5。历史验收数字见旧记录，本轮逐项结果在 `artifacts/winui/result.json`。
+
 Windows 桌面原型，基于 NtMiner 项目逐步重构。使用 .NET 10，前端为 WinUI 3，共用配置、后台与内核适配。与根目录的旧版 `NTMiner.sln` 隔离，不加载旧版程序集或云端配置。
 
 ## 启动
@@ -91,7 +95,7 @@ WinUI 的 **硬件仪表盘**页只读检测本机硬件：处理器核心与频
 
 **探测由后台 Agent 执行。** WinUI 3 运行在 `Microsoft.NETCore.App` 上，`System.Management` 在该宿主会抛 `PlatformNotSupportedException`（该包只认可 `Microsoft.WindowsDesktop.App` 桌面框架），因此前端通过命名管道新增的 `hardware` 命令向 Agent 取值。仪表盘需要 Agent 已连接；后端未连接时页面会说明而不是显示错误数据。
 
-配置存储在 `%LOCALAPPDATA%\NtMiner.Modern\profile.json`。只存收款地址等挖矿配置，不应输入私钥或助记词；不自动导入旧 NtMiner 配置。当前格式为 v4，新增内核参数开关与界面主题两项。v1 迁移后保留 SRBMiner/GPU 原有行为，v2 迁移保留 CPU/GPU 与自测选择，v3 直接补上新增字段的默认值；迁移只发生在内存中，不改写原文件，用户下一次修改配置时才以 v4 写回。未知版本拒绝读取且不会被自动覆盖。
+配置存储在安装目录的 `profile.json`，只保存公开收款地址等挖矿配置，不应输入私钥或助记词。当前格式为 v5；v1 至 v4 会升级到 v5，未知版本拒绝读取且不会被自动覆盖。首次启动会将旧版 `%LOCALAPPDATA%\NtMiner.Modern` 中的配置及已导入内核复制到安装目录，后续读写只发生在安装目录。
 
 ## 工程与验证
 

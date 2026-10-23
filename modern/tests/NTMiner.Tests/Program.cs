@@ -23,6 +23,7 @@ await ProfileTests.RunAsync();
 await SessionTests.RunAsync();
 await IpcTests.RunAsync();
 await PolicyAndHardwareTests.RunAsync();
+await ExtensionTests.RunAsync();
 
 Console.WriteLine($"\n{Passed} passed; {Failures} failed. No real miner was downloaded or started.");
 return Failures == 0 ? 0 : 1;
